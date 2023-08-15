@@ -11,6 +11,12 @@ from langchain import LLMChain
 import streamlit as st
 from langchain.utilities import SerpAPIWrapper
 from langchain.chains import RetrievalQA
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import FAISS
+from langchain.embeddings import OpenAIEmbeddings
+from PyPDF2 import PdfReader
+from langchain.document_loaders import PyPDFLoader
+import tempfile
 
 
 
@@ -28,7 +34,36 @@ def load_memory(messages, memory):
             memory.save_context({"input": user_msg["content"]}, {"output": assistant_msg["content"]})  # Update memory with assistant's response
     return memory
 
-class LookupTool(CustomTool):
+class DBStore:
+    def __init__(self, pdf_file):
+        self.pdf_file = pdf_file
+        self.embeddings = OpenAIEmbeddings()
+        self.vector_store = None
+
+    def get_pdf_text(self):
+        loaders = [PyPDFLoader(self.pdf_file)]
+        docs = []
+        for loader in loaders:
+            docs.extend(loader.load())
+        return docs  # Return documents instead of plain text
+
+    def get_text_chunks(self, documents):
+        text_splitter = RecursiveCharacterTextSplitter(
+            separators=["\n\n", "\n", " ", ""],
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len
+        )
+        return text_splitter.split_documents(documents)
+
+    def get_vectorstore(self):
+        documents = self.get_pdf_text()
+        chunks = self.get_text_chunks(documents)
+        embeddings = OpenAIEmbeddings()
+        vectorstore = FAISS.from_documents(documents=chunks, embedding=embeddings)
+        return vectorstore
+
+class DatabaseTool:
     def __init__(self, llm, vector_store):
         self.retrieval = RetrievalQA.from_chain_type(
             llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
@@ -36,9 +71,9 @@ class LookupTool(CustomTool):
         )
 
     def run(self, query: str):
-        res = self.retrieval(query)
-        st.session_state.doc_sources = res['source_documents']
-        return res['result']
+        output = self.retrieval(query)
+        st.session_state.doc_sources = output['source_documents']
+        return output['result']
 
 
 class MRKL:
@@ -55,6 +90,8 @@ class MRKL:
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = SerpAPIWrapper()
+        llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store)
+
         tools = [
             Tool(
                 name="Search",
@@ -65,8 +102,14 @@ class MRKL:
                 name='Calculator',
                 func=llm_math.run,
                 description='Useful for when you need to answer questions about math.'
-            )
+            ),
+            Tool(
+                    name='Look up database',
+                    func=llm_database.run,
+                    description='Useful for querying information from uploaded PDFs.'
+                )
         ]
+        
         return tools
 
     def load_agent(self):
@@ -154,7 +197,7 @@ class MRKL:
             tools=self.tools,
             llm=llm,
             handle_parsing_errors=True,
-            max_iterations=7
+            max_iterations=5
         )
 
         executive_agent = AgentExecutor.from_agent_and_tools(
@@ -163,7 +206,7 @@ class MRKL:
         verbose=True,
         handle_parsing_errors=True,
         memory=memory,
-        max_iterations=7,
+        max_iterations=5,
         )
 
         return executive_agent, memory
@@ -186,13 +229,24 @@ def main():
         st.session_state.messages = [{"roles": "assistant", "content": "How can I help you?"}]
     if "user_input" not in st.session_state:
         st.session_state.user_input = None
+    if "vector_store" not in st.session_state:
+        st.session_state.vector_store = None
      
     openai_api_key = os.getenv("OPENAI_API_KEY")
 
-    #st.sidebar.title("Upload Local Vector DB")
-    #uploaded_file = st.sidebar.file_uploader("Choose a file")  # You can specify the types of files you want to accept
-    #if uploaded_file:
-        #st.sidebar.write("File uploaded successfully!")
+    st.sidebar.title("Upload Local Vector DB")
+    uploaded_file = st.sidebar.file_uploader("Choose a file")  # You can specify the types of files you want to accept
+    with st.sidebar:
+        if st.button("Process"):
+                with st.spinner("Processing"):
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+                        tmpfile.write(uploaded_file.getvalue())
+                        temp_path = tmpfile.name
+                        db_store = DBStore(temp_path)
+                        vector_store = db_store.get_vectorstore()
+                        # You can save the vector store and any other data to the session state if needed
+                        st.session_state.vector_store = vector_store
+                        st.success("PDF uploaded successfully!")
 
     MRKL_agent = MRKL()
     memory = load_memory(st.session_state.messages, MRKL_agent.memory)
@@ -210,6 +264,7 @@ def main():
             st.write(response)
 
     st.write(memory)
+    st.write(st.session_state.vector_store)
 
 if __name__== '__main__':
     main()
