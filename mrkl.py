@@ -17,6 +17,7 @@ from langchain.embeddings import OpenAIEmbeddings
 from PyPDF2 import PdfReader
 from langchain.document_loaders import PyPDFLoader
 import tempfile
+import pypdf
 
 
 
@@ -96,7 +97,7 @@ class MRKL:
             Tool(
                 name="Search",
                 func=llm_search.run,
-                description="useful for when you need to answer questions about current events"
+                description="Useful when you cannot find a clear answer by looking up the database and that you need to search the regular internet for information. You can also this tool to find general information and about current events"
             ),
             Tool(
                 name='Calculator',
@@ -106,7 +107,7 @@ class MRKL:
             Tool(
                     name='Look up database',
                     func=llm_database.run,
-                    description='Useful for querying information from uploaded PDFs.'
+                    description="This tool retrieves information from an uploaded document database. Use this more than the normal search if the question is about the uploaded document."
                 )
         ]
         
@@ -264,7 +265,7 @@ def main():
             st.write(response)
 
     st.write(memory)
-    st.write(st.session_state.vector_store)
+    st.write(st.session_state.messages)
 
 if __name__== '__main__':
     main()
