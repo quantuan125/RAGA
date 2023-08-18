@@ -104,14 +104,14 @@ class MRKL:
             model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
-        llm_search = SerpAPIWrapper()
+        llm_search = DuckDuckGoSearchRun()
         llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store)
 
         tools = [
             Tool(
                 name="Search",
                 func=llm_search.run,
-                description="Useful when you cannot find a clear answer by looking up the database and that you need to search the regular internet for information. You can also this tool to find general information and about current events"
+                description="Useful when you cannot find a clear answer by looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
             ),
             Tool(
                 name='Calculator',
@@ -134,27 +134,24 @@ class MRKL:
             model_name="gpt-3.5-turbo"
             )
 
-        PREFIX = """Assistant is a large language model trained by OpenAI.
-
-        Assistant is designed to be able to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. As a language model, Assistant is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
+        PREFIX ="""Assistant is a large language model trained by OpenAI. Assistant is designed to be able to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. As a language model, Assistant is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
 
         Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. 
         
-        Begin by searching for answers and relevant examples within the database provided. If you are unable to find sufficient information you may use a general internet search to find results. 
-        
-        However, always prioritize providing answers and examples from the database before resorting to general internet search.
+        Begin by searching for answers and relevant examples within PDF pages (documents) provided. If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from the database before resorting to general internet search.
 
         Assistant has access to the following tools:"""
 
         FORMAT_INSTRUCTIONS = """
         To answer a question or respond to a statement, follow these steps:
 
-        1. Determine if the input requires the use of a tool. If it does not, then provide a kind response and skip right to the final answer.  
-        2. If a tool is necessary, identify the information you need. If it's not in your current knowledge, use the Search tool to fetch it.
-        3. Extract the necessary information from the Search tool. 
-        4. If a mathematical operation is required, ensure you have all numerical values needed.
-        5. Use the Calculator tool with the extracted numerical values to perform the calculation.
-        6. Provide the final answer.
+        1. Determine if the input requires the use of a tool. If it does not, then provide a kind response and skip right to the final answer.
+        2. If the input references or implies information about an uploaded document or uses terms like 'document', 'database', or similar, prioritize the 'Look up database' tool to fetch information from the stored vectors of the uploaded documents.
+        3. If a tool is necessary and the database doesn't provide a satisfactory answer, identify the information you need. If it's not in your current knowledge, use the Search tool to fetch it.
+        4. Extract the necessary information from the chosen tool.
+        5. If a mathematical operation is required, ensure you have all numerical values needed.
+        6. Use the Calculator tool with the extracted numerical values to perform the calculation.
+        7. Provide the final answer, ensuring that if the information was sourced from the database, mention it to provide context to the user.
 
         Use the following format:
         '''
@@ -203,7 +200,7 @@ class MRKL:
             tools=self.tools,
             llm=llm,
             handle_parsing_errors=True,
-            max_iterations=5
+            max_iterations=4
         )
 
         executive_agent = AgentExecutor.from_agent_and_tools(
@@ -212,7 +209,7 @@ class MRKL:
         verbose=True,
         handle_parsing_errors=True,
         memory=memory,
-        max_iterations=5,
+        max_iterations=4,
         )
 
         return executive_agent, memory
@@ -269,8 +266,6 @@ def main():
         st.session_state.user_input = None
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
-     
-    openai_api_key = os.getenv("OPENAI_API_KEY")
 
     st.sidebar.title("Upload Local Vector DB")
     uploaded_file = st.sidebar.file_uploader("Choose a file")  # You can specify the types of files you want to accept
