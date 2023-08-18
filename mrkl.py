@@ -1,4 +1,5 @@
 import os
+import re
 from dotenv import load_dotenv
 from langchain.chat_models import ChatOpenAI
 from langchain.llms import OpenAI
@@ -21,6 +22,7 @@ import pypdf
 import json
 import openai
 from langchain.docstore.document import Document
+from langchain.chains.router import MultiRetrievalQAChain
 
 
 
@@ -54,34 +56,106 @@ class DBStore:
             "author": metadata.get("/Author", "").strip(),
             "creation_date": metadata.get("/CreationDate", "").strip(),
         }
+    
+    def extract_pages_from_pdf(self):
+        pages = []
+        for page_num, page in enumerate(self.reader.pages):
+            text = page.extract_text()
+            if text.strip():  # Check if extracted text is not empty
+                pages.append((page_num + 1, text))
+        return pages
 
+    def parse_pdf(self):
+        """
+        Extracts the title and text from each page of the PDF.
+        :return: A tuple containing the title and a list of tuples with page numbers and extracted text.
+        """
+        metadata = self.extract_metadata_from_pdf()
+        pages = self.extract_pages_from_pdf()
+        #st.write(pages)
+        #st.write(metadata)
+        return pages, metadata
+    
+    @staticmethod
+    def merge_hyphenated_words(text):
+        return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+
+    @staticmethod
+    def fix_newlines(text):
+        return re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+
+    @staticmethod
+    def remove_multiple_newlines(text):
+        return re.sub(r"\n{2,}", "\n", text)
+
+    def clean_text(self, pages):
+        cleaning_functions = [
+            self.merge_hyphenated_words,
+            self.fix_newlines,
+            self.remove_multiple_newlines,
+        ]
+        cleaned_pages = []
+        for page_num, text in pages:
+            for cleaning_function in cleaning_functions:
+                text = cleaning_function(text)
+            cleaned_pages.append((page_num, text))
+        return cleaned_pages
+
+    def text_to_docs(self, text):
+        doc_chunks = []
+        for page_num, page in text:
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
+                chunk_overlap=200,
+            )
+            chunks = text_splitter.split_text(page)
+            for i, chunk in enumerate(chunks):
+                doc = Document(
+                    page_content=chunk,
+                    metadata={
+                        "page_number": page_num,
+                        "chunk": i,
+                        "source": f"p{page_num}-{i}",
+                        **self.metadata,
+                    },
+                )
+                doc_chunks.append(doc)
+            st.write(doc_chunks)
+        return doc_chunks
+    
     def get_pdf_text(self):
-        loaders = [PyPDFLoader(self.pdf_file)]
-        docs = []
-        for loader in loaders:
-            docs.extend(loader.load())
-        return docs  # Return documents instead of plain text
-
-    def get_text_chunks(self, documents):
-        text_splitter = RecursiveCharacterTextSplitter(
-            separators=["\n\n", "\n", " ", ""],
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len
-        )
-        return text_splitter.split_documents(documents)
+        pages, metadata = self.parse_pdf()  # We only need the pages from the tuple
+        cleaned_text_pdf = self.clean_text(pages)
+        document_chunks = self.text_to_docs(cleaned_text_pdf)
+        return document_chunks
 
     def get_vectorstore(self):
-        documents = self.get_pdf_text()
-        chunks = self.get_text_chunks(documents)
-        embeddings = OpenAIEmbeddings()
-        vectorstore = FAISS.from_documents(documents=chunks, embedding=embeddings)
-        return vectorstore
-
+        document_chunks = self.get_pdf_text()
+        vector_stores = []
+        for doc in document_chunks:
+            vectorstore = FAISS.from_documents(documents=[doc], embedding=self.embeddings)
+            vector_stores.append(vectorstore)
+        st.write(vector_stores)
+        return vector_stores
+    
+    def merge_stores(self, vector_stores):
+        combined_store = vector_stores[0]
+        st.write(combined_store)
+        for store in vector_stores[1:]:
+            combined_store.merge_from(store)
+    
+    def get_combined_vectorstore(self):
+        vector_stores = self.get_vectorstore()
+        self.merge_stores(vector_stores)
+        st.write(vector_stores[0])
+        return vector_stores[0]  # After merging, the first store in the list is the primary store.
+    
+    
 class DatabaseTool:
-    def __init__(self, llm, vector_store):
-        self.retrieval = RetrievalQA.from_chain_type(
-            llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
+    def __init__(self, llm, combined_vector_store):
+         self.retrieval = RetrievalQA.from_chain_type(
+            llm=llm, chain_type="stuff", retriever=combined_vector_store.as_retriever(),
             return_source_documents=True
         )
 
@@ -105,7 +179,7 @@ class MRKL:
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = DuckDuckGoSearchRun()
-        llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store)
+        llm_database = DatabaseTool(llm=llm, combined_vector_store=st.session_state.vector_store)
 
         tools = [
             Tool(
@@ -138,21 +212,13 @@ class MRKL:
 
         Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. 
         
-        Begin by searching for answers and relevant examples within PDF pages (documents) provided. If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from the database before resorting to general internet search.
+        Begin by searching for answers and relevant examples within PDF pages (documents) provided in the database. If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from the database before resorting to general internet search.
+
+        If the user question does not require any tools, simply kindly respond back in an assitance manner as a Final Answer
 
         Assistant has access to the following tools:"""
 
         FORMAT_INSTRUCTIONS = """
-        To answer a question or respond to a statement, follow these steps:
-
-        1. Determine if the input requires the use of a tool. If it does not, then provide a kind response and skip right to the final answer.
-        2. If the input references or implies information about an uploaded document or uses terms like 'document', 'database', or similar, prioritize the 'Look up database' tool to fetch information from the stored vectors of the uploaded documents.
-        3. If a tool is necessary and the database doesn't provide a satisfactory answer, identify the information you need. If it's not in your current knowledge, use the Search tool to fetch it.
-        4. Extract the necessary information from the chosen tool.
-        5. If a mathematical operation is required, ensure you have all numerical values needed.
-        6. Use the Calculator tool with the extracted numerical values to perform the calculation.
-        7. Provide the final answer, ensuring that if the information was sourced from the database, mention it to provide context to the user.
-
         Use the following format:
         '''
         Question: the input question you must answer
@@ -266,22 +332,22 @@ def main():
         st.session_state.user_input = None
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
+    if "doc_sources" not in st.session_state:
+        st.session_state.doc_sources = []
 
     st.sidebar.title("Upload Local Vector DB")
-    uploaded_file = st.sidebar.file_uploader("Choose a file")  # You can specify the types of files you want to accept
+    uploaded_file = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
     with st.sidebar:
         if st.button("Process"):
                 with st.spinner("Processing"):
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-                        tmpfile.write(uploaded_file.getvalue())
-                        temp_path = tmpfile.name
-                        db_store = DBStore(temp_path)
-                        vector_store = db_store.get_vectorstore()
-                        # You can save the vector store and any other data to the session state if needed
-                        st.session_state.vector_store = vector_store
-                        st.success("PDF uploaded successfully!")
-                        metadata = db_store.extract_metadata_from_pdf()
-                        st.write("PDF Metadata:", metadata)
+                    for file in uploaded_file:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+                            tmpfile.write(file.getvalue())
+                            temp_path = tmpfile.name
+                            db_store = DBStore(temp_path)
+                            combined_vector_store = db_store.get_combined_vectorstore()
+                            st.session_state.vector_store = combined_vector_store
+                            st.success("PDF uploaded successfully!")
 
     MRKL_agent = MRKL()
     memory = load_memory(st.session_state.messages, MRKL_agent.memory)
@@ -297,9 +363,22 @@ def main():
             response = MRKL_agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
             st.session_state.messages.append({"roles": "assistant", "content": response})
             st.write(response)
+        
+    with st.expander("View Document Sources"):
+        st.subheader("Source Document")
+        if len(st.session_state.doc_sources) != 0:
+
+            for document in st.session_state.doc_sources:
+                    st.divider()
+                    source_text = f"{document.page_content}\n\nTitle: {document.metadata['title']}\n -Author: {document.metadata['author']}\n\nPage Number: {document.metadata['page_number']}\n -Chunk: {document.metadata['chunk']}"
+                    st.write(source_text)
+        else:
+                st.write("No document sources found")
+
 
     st.write(memory)
-    #st.write(st.session_state.messages)
+    st.write(st.session_state.vector_store)
+
 
 
 if __name__== '__main__':
