@@ -18,6 +18,9 @@ from PyPDF2 import PdfReader
 from langchain.document_loaders import PyPDFLoader
 import tempfile
 import pypdf
+import json
+import openai
+from langchain.docstore.document import Document
 
 
 
@@ -38,8 +41,19 @@ def load_memory(messages, memory):
 class DBStore:
     def __init__(self, pdf_file):
         self.pdf_file = pdf_file
+        self.reader = pypdf.PdfReader(pdf_file)
+        self.metadata = self.extract_metadata_from_pdf()
         self.embeddings = OpenAIEmbeddings()
         self.vector_store = None
+
+    def extract_metadata_from_pdf(self):
+        """Extract metadata from the PDF."""
+        metadata = self.reader.metadata
+        return {
+            "title": metadata.get("/Title", "").strip(),
+            "author": metadata.get("/Author", "").strip(),
+            "creation_date": metadata.get("/CreationDate", "").strip(),
+        }
 
     def get_pdf_text(self):
         loaders = [PyPDFLoader(self.pdf_file)]
@@ -105,9 +119,9 @@ class MRKL:
                 description='Useful for when you need to answer questions about math.'
             ),
             Tool(
-                    name='Look up database',
-                    func=llm_database.run,
-                    description="This tool retrieves information from an uploaded document database. Use this more than the normal search if the question is about the uploaded document."
+                name='Look up database',
+                func=llm_database.run,
+                description="Always useful for finding the exactly written answer to the question by looking into a collection of documents. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
                 )
         ]
         
@@ -124,12 +138,11 @@ class MRKL:
 
         Assistant is designed to be able to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. As a language model, Assistant is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
 
-        Assistant is constantly learning and improving, and its capabilities are constantly evolving. It is able to process and understand large amounts of text, and can use this knowledge to provide accurate and informative responses to a wide range of questions. Additionally, Assistant is able to generate its own text based on the input it receives, allowing it to engage in discussions and provide explanations and descriptions on a wide range of topics.
-
-        Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. Whether you need help with a specific question or just want to have a conversation about a particular topic, Assistant is here to assist.
-
-        TOOLS:
-        ------
+        Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. 
+        
+        Begin by searching for answers and relevant examples within the database provided. If you are unable to find sufficient information you may use a general internet search to find results. 
+        
+        However, always prioritize providing answers and examples from the database before resorting to general internet search.
 
         Assistant has access to the following tools:"""
 
@@ -142,13 +155,6 @@ class MRKL:
         4. If a mathematical operation is required, ensure you have all numerical values needed.
         5. Use the Calculator tool with the extracted numerical values to perform the calculation.
         6. Provide the final answer.
-
-        For example: 
-        If you need to find out someone's age and then perform a calculation with it (For example: What is Robert F Kennedy Jr's age and subtract by 10 and multiply by 21?)
-        - First, use the Search tool to find the age. For example: "I need to find Robert F Kennedy Jr's age first."
-        - Extract the age from the search results. For example: "Robert F Kennedy Jr's age is 69"
-        - Use the Calculator tool with the extracted age to perform the calculation. For example: "(69-10)*21"
-        - Provide the final answer. For example: "The answer is 1239"
 
         Use the following format:
         '''
@@ -167,7 +173,6 @@ class MRKL:
         Final Answer: the final answer to the original input question.
         '''
         """
-        
 
         SUFFIX = """Begin!
         Previous conversation history:{chat_history}
@@ -212,6 +217,38 @@ class MRKL:
 
         return executive_agent, memory
     
+    def get_keywords(self, llm_response):
+        conversation = llm_response["chat_history"]
+        keyword_list = []
+
+        search_keywords_extract_function = {
+            "name": "search_keywords_extractor",
+            "description": "Creates a list of 5 short academic Google searchable keywords from the given conversation.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "keywords": {
+                        "type": "string",
+                        "description": "List of 5 short academic Google searchable keywords"
+                    }
+                },
+                "required": ["keywords"]
+            }
+        }
+
+        res = openai.ChatCompletion.create(
+            model='gpt-3.5-turbo-0613',
+            messages=[{"role": "user", "content": conversation}],
+            functions=[search_keywords_extract_function]
+        )
+
+        if "function_call" in res['choices'][0]['message']:
+            args = json.loads(res['choices'][0]['message']['function_call']['arguments'])
+            keyword_list = list(args['keywords'].split(","))
+
+        return keyword_list
+
+    
     def run_agent(self, input, callbacks=[]):
         # Define the logic for processing the user's input
         # For now, let's just use the agent's run method
@@ -248,6 +285,8 @@ def main():
                         # You can save the vector store and any other data to the session state if needed
                         st.session_state.vector_store = vector_store
                         st.success("PDF uploaded successfully!")
+                        metadata = db_store.extract_metadata_from_pdf()
+                        st.write("PDF Metadata:", metadata)
 
     MRKL_agent = MRKL()
     memory = load_memory(st.session_state.messages, MRKL_agent.memory)
@@ -265,7 +304,8 @@ def main():
             st.write(response)
 
     st.write(memory)
-    st.write(st.session_state.messages)
+    #st.write(st.session_state.messages)
+
 
 if __name__== '__main__':
     main()
