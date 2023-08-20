@@ -6,7 +6,7 @@ from langchain.llms import OpenAI
 from langchain.agents import load_tools, initialize_agent, AgentType, Tool, AgentExecutor, ConversationalAgent, ZeroShotAgent
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.tools import DuckDuckGoSearchRun
-from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
+from langchain.memory import ConversationBufferMemory 
 from langchain.chains import LLMMathChain
 from langchain import LLMChain
 import streamlit as st
@@ -16,35 +16,35 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.embeddings import OpenAIEmbeddings
 from PyPDF2 import PdfReader
+from langchain.document_loaders import PyPDFLoader
 import tempfile
 import pypdf
 import json
 import openai
 from langchain.docstore.document import Document
 from langchain.chains.router import MultiRetrievalQAChain
-from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader
 
 
 
-
-def reset_chat():
-    st.session_state.messages = [{"roles": "assistant", "content": "How can I help you?"}]
-    st.session_state.history = []
-    st.session_state.search_keywords = []
-    st.session_state.doc_sources = []
-    st.session_state.history = None
-    st.session_state.agent.clear_conversation()
-
-    
 def display_messages(messages):
     # Display all messages
     for msg in messages:
         st.chat_message(msg["roles"]).write(msg["content"])
 
+def load_memory(messages, memory):
+    # Skip the initial message from the assistant (index 0)
+    for i in range(1, len(messages), 2):  
+        user_msg = messages[i]
+        if i + 1 < len(messages):  # Check if there's an assistant message after the user message
+            assistant_msg = messages[i + 1]
+            memory.save_context({"input": user_msg["content"]}, {"output": assistant_msg["content"]})  # Update memory with assistant's response
+    return memory
+
 class DBStore:
     def __init__(self, file_path, file_name):
         self.file_path = file_path
         self.file_name = os.path.splitext(file_name)[0]
+        st.write(self.file_name)
         self.reader = pypdf.PdfReader(file_path)
         self.metadata = self.extract_metadata_from_pdf()
         self.embeddings = OpenAIEmbeddings()
@@ -53,7 +53,6 @@ class DBStore:
     def extract_metadata_from_pdf(self):
         """Extract metadata from the PDF."""
         metadata = self.reader.metadata
-        st.session_state.document_metadata = metadata
         return {
             "title": metadata.get("/Title", "").strip(),
             "author": metadata.get("/Author", "").strip(),
@@ -136,60 +135,35 @@ class DBStore:
 
     def get_vectorstore(self):
         document_chunks = self.get_pdf_text()
-        vector_store = FAISS.from_documents(documents=document_chunks, embedding=self.embeddings)
-        st.write(vector_store)
-        return vector_store
-   
+        vector_stores = []
+        for doc in document_chunks:
+            vectorstore = FAISS.from_documents(documents=[doc], embedding=self.embeddings)
+            vector_stores.append(vectorstore)
+        st.write(vector_stores)
+        return vector_stores
+    
+    def merge_stores(self, vector_stores):
+        combined_store = vector_stores[0]
+        st.write(combined_store)
+        for store in vector_stores[1:]:
+            combined_store.merge_from(store)
+    
+    def get_combined_vectorstore(self):
+        vector_stores = self.get_vectorstore()
+        self.merge_stores(vector_stores)
+        st.write(vector_stores[0])
+        return vector_stores[0]  # After merging, the first store in the list is the primary store.
+    
+    
 class DatabaseTool:
-    def __init__(self, llm, vector_store, metadata=None):
-        self.retrieval = RetrievalQA.from_chain_type(
-            llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
+    def __init__(self, llm, combined_vector_store):
+         self.retrieval = RetrievalQA.from_chain_type(
+            llm=llm, chain_type="stuff", retriever=combined_vector_store.as_retriever(),
             return_source_documents=True
         )
-        self.metadata = metadata
-
-    def get_description(self):
-        base_description = "Always useful for finding the exactly written answer to the question by looking into a collection of documents."
-        if self.metadata:
-            title = self.metadata.get("/Title")
-            author = self.metadata.get("/Author")
-            if author:
-                return f"{base_description} This tool is currently loaded with '{title}' by {author}. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
-            else:
-                return f"{base_description} This tool is currently loaded with '{title}'. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
-        return base_description
-
 
     def run(self, query: str):
         output = self.retrieval(query)
-        st.session_state.doc_sources = output['source_documents']
-        return output['result']
-
-class US_Constitution_Database:
-    def __init__(self, llm, folder_path: str):
-        self.llm = llm
-        self.folder_path = folder_path
-        self.documents_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-        self.embeddings = OpenAIEmbeddings()
-        self.documents = self.load_documents()
-        self.vectorstore = self.create_vectorstore()
-
-    def load_documents(self):
-        loader = DirectoryLoader(self.folder_path, glob="*.pdf", loader_cls=PyPDFLoader)
-        return loader.load()
-
-    def create_vectorstore(self):
-        docs = self.documents_splitter.split_documents(self.documents)
-        st.write(docs)
-        project_vectorstore = FAISS.from_documents(docs, self.embeddings)
-        st.session_state.project_vectorstore = project_vectorstore
-        return project_vectorstore
-
-    def run(self, query: str):
-        retrieval = RetrievalQA.from_chain_type(
-            llm=self.llm, chain_type="map_reduce", retriever=self.vectorstore.as_retriever(), return_source_documents=True
-        )
-        output = retrieval(query)
         st.session_state.doc_sources = output['source_documents']
         return output['result']
 
@@ -198,7 +172,6 @@ class MRKL:
     def __init__(self):
         self.tools = self.load_tools()
         self.agent, self.memory = self.load_agent()
-        
 
     def load_tools(self):
         # Load tools
@@ -209,10 +182,7 @@ class MRKL:
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = DuckDuckGoSearchRun()
-
-        current_directory = os.getcwd()
-        folder_path = os.path.join(current_directory, "US_Constitution")
-        usc_db = US_Constitution_Database(llm=llm, folder_path=folder_path)  # Replace with your folder path
+        llm_database = DatabaseTool(llm=llm, combined_vector_store=st.session_state.vector_store)
 
         tools = [
             Tool(
@@ -226,26 +196,12 @@ class MRKL:
                 description='Useful for when you need to answer questions about math.'
             ),
             Tool(
-                name='US Constitution Database',
-                func=usc_db.run,
-                description="Always useful for when you need to answer questions about the United State Constitution and The Bills of Rights. Input should be a fully formed question. Use this tool more often than the normal search tool"
-            ),
-        ]
-
-        # Only add the DatabaseTool if vector_store exists
-        if st.session_state.vector_store is not None:
-            metadata = st.session_state.document_metadata
-            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
-
-            st.write(llm_database.get_description())
-
-            tools.append(
-                Tool(
-                    name='Document Database',
-                    func=llm_database.run,
-                    description=llm_database.get_description(),
+                name='Look up database',
+                func=llm_database.run,
+                description="Always useful for finding the exactly written answer to the question by looking into a collection of documents. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
                 )
-            )
+        ]
+        
         return tools
 
     def load_agent(self):
@@ -258,14 +214,10 @@ class MRKL:
         PREFIX ="""Assistant is a large language model trained by OpenAI. Assistant is designed to be able to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics. As a language model, Assistant is able to generate human-like text based on the input it receives, allowing it to engage in natural-sounding conversations and provide responses that are coherent and relevant to the topic at hand.
 
         Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. 
-
-        Assistant has access to the 'US Constitution Database' which contains information about the United State Constitution and The Bills of Rights project. Always search in the 'US Constitution Database' if the user query is related about the United State Constitution and The Bills of Rights
         
-        Otherwise, always search for answers and relevant examples within PDF pages (documents) provided in the 'Document Database'. The 'Document Database' contains general information from uploaded documents.  
-        
-        If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from either the 'US Constitution Database' or the 'Document Database' before resorting to general internet search.
+        Begin by searching for answers and relevant examples within PDF pages (documents) provided in the database. If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from the database before resorting to general internet search.
 
-        If the user question does not require any tools, simply kindly respond back in an assitive manner as a Final Answer
+        If the user question does not require any tools, simply kindly respond back in an assitance manner as a Final Answer
 
         Assistant has access to the following tools:"""
 
@@ -309,7 +261,7 @@ class MRKL:
             4. If all else fails, restart the process and try again."""
             return str(error)[:50]
 
-        memory = ConversationBufferWindowMemory(memory_key="chat_history", k=0)
+        memory = ConversationBufferMemory(memory_key="chat_history")
 
         llm_chain = LLMChain(llm=llm, prompt=prompt)
         agent = ZeroShotAgent(
@@ -317,7 +269,7 @@ class MRKL:
             tools=self.tools,
             llm=llm,
             handle_parsing_errors=True,
-            max_iterations=5,
+            max_iterations=4
         )
 
         executive_agent = AgentExecutor.from_agent_and_tools(
@@ -326,19 +278,10 @@ class MRKL:
         verbose=True,
         handle_parsing_errors=True,
         memory=memory,
-        max_iterations=5,
+        max_iterations=4,
         )
 
         return executive_agent, memory
-    
-    def load_memory(self, messages):
-        # Skip the initial message from the assistant (index 0)
-        for i in range(1, len(messages), 2):  
-            user_msg = messages[i]
-            if i + 1 < len(messages):  # Check if there's an assistant message after the user message
-                assistant_msg = messages[i + 1]
-                self.memory.save_context({"input": user_msg["content"]}, {"output": assistant_msg["content"]})  # Update memory with assistant's response
-        return self.memory
     
     def get_keywords(self, llm_response):
         conversation = llm_response["chat_history"]
@@ -371,14 +314,6 @@ class MRKL:
 
         return keyword_list
 
-    def clear_conversation(self):
-        self.memory.clear()
-
-    def regenerate_response(self):
-        st.session_state.user_input = st.session_state.history[-2].content
-        st.session_state.history = st.session_state.history[:-2]
-        self.run_agent()
-        return
     
     def run_agent(self, input, callbacks=[]):
         # Define the logic for processing the user's input
@@ -402,52 +337,23 @@ def main():
         st.session_state.vector_store = None
     if "doc_sources" not in st.session_state:
         st.session_state.doc_sources = []
-    if "history" not in st.session_state:
-        st.session_state.history = []
-    if "agent" not in st.session_state:
-        st.session_state.agent = MRKL()
-
-
-
 
     st.sidebar.title("Upload Local Vector DB")
-    uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
-    if uploaded_files:
-        file_details = {"FileName": [], "FileType": [], "FileSize": []}
-
-        # Populate file_details using traditional loops
-        for file in uploaded_files:
-            file_details["FileName"].append(file.name)
-            file_details["FileType"].append(file.type)
-            file_details["FileSize"].append(file.size)
-
-        # Use selectbox to choose a file
-        selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"])
-
-        # Get the index of the file selected
-        file_index = file_details["FileName"].index(selected_file_name)
-
-        # Display details of the selected file
-        st.sidebar.write("You selected:")
-        st.sidebar.write("FileName : ", file_details["FileName"][file_index])
-        st.sidebar.write("FileType : ", file_details["FileType"][file_index])
-        st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
-
-        with st.sidebar:
-            if st.sidebar.button("Process"):
+    uploaded_file = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
+    with st.sidebar:
+        if st.button("Process"):
                 with st.spinner("Processing"):
-                    selected_file = uploaded_files[file_index]
-                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-                        tmpfile.write(selected_file.getvalue())
-                        temp_path = tmpfile.name
-                        db_store = DBStore(temp_path, selected_file.name)
-                        vector_store = db_store.get_vectorstore()
-                        st.session_state.vector_store = vector_store
-                        st.session_state.agent = MRKL()
-                        st.write(st.session_state.document_metadata)
-                        st.success("PDF uploaded successfully!")
-    
+                    for file in uploaded_file:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+                            tmpfile.write(file.getvalue())
+                            temp_path = tmpfile.name
+                            db_store = DBStore(temp_path, file.name)
+                            combined_vector_store = db_store.get_combined_vectorstore()
+                            st.session_state.vector_store = combined_vector_store
+                            st.success("PDF uploaded successfully!")
 
+    MRKL_agent = MRKL()
+    #memory = load_memory(st.session_state.messages, MRKL_agent.memory)
     display_messages(st.session_state.messages)
 
     if user_input := st.chat_input("Type something here..."):
@@ -455,22 +361,12 @@ def main():
         st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
         st.chat_message("user").write(st.session_state.user_input)
 
-        current_user_message = {"input": st.session_state.user_input}
-
-
         with st.chat_message("assistant"):
             st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-            response = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+            response = MRKL_agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
             st.session_state.messages.append({"roles": "assistant", "content": response})
             st.write(response)
-
-            current_assistant_response = {"output": response}
-
-        current_messages = [current_user_message, current_assistant_response]    
-        st.session_state.history = st.session_state.agent.load_memory(current_messages)
-
-
-
+        
     with st.expander("View Document Sources"):
         st.subheader("Source Document")
         if len(st.session_state.doc_sources) != 0:
@@ -483,15 +379,8 @@ def main():
                 st.write("No document sources found")
 
 
-    buttons_placeholder = st.container()
-    with buttons_placeholder:
-        #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-        st.button("Clear Chat", key="clear", on_click=reset_chat)
-
-    st.write(st.session_state.history)
-    #st.write(st.session_state.messages)
+    #st.write(memory)
     st.write(st.session_state.vector_store)
-    st.write(st.session_state.project_vectorstore)
 
 
 

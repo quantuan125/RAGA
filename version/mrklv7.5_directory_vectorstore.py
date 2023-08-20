@@ -53,7 +53,6 @@ class DBStore:
     def extract_metadata_from_pdf(self):
         """Extract metadata from the PDF."""
         metadata = self.reader.metadata
-        st.session_state.document_metadata = metadata
         return {
             "title": metadata.get("/Title", "").strip(),
             "author": metadata.get("/Author", "").strip(),
@@ -141,31 +140,18 @@ class DBStore:
         return vector_store
    
 class DatabaseTool:
-    def __init__(self, llm, vector_store, metadata=None):
-        self.retrieval = RetrievalQA.from_chain_type(
+    def __init__(self, llm, vector_store):
+         self.retrieval = RetrievalQA.from_chain_type(
             llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
             return_source_documents=True
         )
-        self.metadata = metadata
-
-    def get_description(self):
-        base_description = "Always useful for finding the exactly written answer to the question by looking into a collection of documents."
-        if self.metadata:
-            title = self.metadata.get("/Title")
-            author = self.metadata.get("/Author")
-            if author:
-                return f"{base_description} This tool is currently loaded with '{title}' by {author}. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
-            else:
-                return f"{base_description} This tool is currently loaded with '{title}'. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
-        return base_description
-
 
     def run(self, query: str):
         output = self.retrieval(query)
         st.session_state.doc_sources = output['source_documents']
         return output['result']
 
-class US_Constitution_Database:
+class Project_Database:
     def __init__(self, llm, folder_path: str):
         self.llm = llm
         self.folder_path = folder_path
@@ -180,7 +166,6 @@ class US_Constitution_Database:
 
     def create_vectorstore(self):
         docs = self.documents_splitter.split_documents(self.documents)
-        st.write(docs)
         project_vectorstore = FAISS.from_documents(docs, self.embeddings)
         st.session_state.project_vectorstore = project_vectorstore
         return project_vectorstore
@@ -211,8 +196,8 @@ class MRKL:
         llm_search = DuckDuckGoSearchRun()
 
         current_directory = os.getcwd()
-        folder_path = os.path.join(current_directory, "US_Constitution")
-        usc_db = US_Constitution_Database(llm=llm, folder_path=folder_path)  # Replace with your folder path
+        folder_path = os.path.join(current_directory, "Project_Description")
+        project_db = Project_Database(llm=llm, folder_path=folder_path)  # Replace with your folder path
 
         tools = [
             Tool(
@@ -226,26 +211,23 @@ class MRKL:
                 description='Useful for when you need to answer questions about math.'
             ),
             Tool(
-                name='US Constitution Database',
-                func=usc_db.run,
-                description="Always useful for when you need to answer questions about the United State Constitution and The Bills of Rights. Input should be a fully formed question. Use this tool more often than the normal search tool"
+                name='Project Database',
+                func=project_db.run,
+                description="Always useful for when you need to answer questions about the 'House of Generations' project. Input should be a fully formed question. Use this tool more often than the normal search tool"
             ),
         ]
 
         # Only add the DatabaseTool if vector_store exists
         if st.session_state.vector_store is not None:
-            metadata = st.session_state.document_metadata
-            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
-
-            st.write(llm_database.get_description())
-
+            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store)
             tools.append(
                 Tool(
                     name='Document Database',
                     func=llm_database.run,
-                    description=llm_database.get_description(),
+                    description="Always useful for finding the exactly written answer to the question by looking into a collection of documents. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database."
                 )
             )
+        
         return tools
 
     def load_agent(self):
@@ -259,11 +241,11 @@ class MRKL:
 
         Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. 
 
-        Assistant has access to the 'US Constitution Database' which contains information about the United State Constitution and The Bills of Rights project. Always search in the 'US Constitution Database' if the user query is related about the United State Constitution and The Bills of Rights
+        Assistant has access to the 'Project Database' which contains information about the 'House of Generations' project. Always search in the 'Project Database' if the query explicitly asked about the 'House of Generations' project. 
         
-        Otherwise, always search for answers and relevant examples within PDF pages (documents) provided in the 'Document Database'. The 'Document Database' contains general information from uploaded documents.  
+        If the query does not mentions the 'House of Generations' project, begin by searching for answers and relevant examples within PDF pages (documents) provided in the 'Document Database'. The 'Document Database' contains general information from uploaded documents outside of the 'House of Generations' project
         
-        If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from either the 'US Constitution Database' or the 'Document Database' before resorting to general internet search.
+        If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from either the 'Project Database' or the 'Document Database' before resorting to general internet search.
 
         If the user question does not require any tools, simply kindly respond back in an assitive manner as a Final Answer
 
@@ -444,7 +426,6 @@ def main():
                         vector_store = db_store.get_vectorstore()
                         st.session_state.vector_store = vector_store
                         st.session_state.agent = MRKL()
-                        st.write(st.session_state.document_metadata)
                         st.success("PDF uploaded successfully!")
     
 
