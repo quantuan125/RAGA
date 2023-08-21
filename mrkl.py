@@ -20,6 +20,7 @@ import tempfile
 import pypdf
 import json
 import openai
+from pathlib import Path
 from langchain.docstore.document import Document
 from langchain.chains.router import MultiRetrievalQAChain
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader
@@ -169,19 +170,105 @@ class US_Constitution_Database:
     def __init__(self, llm, folder_path: str):
         self.llm = llm
         self.folder_path = folder_path
-        self.documents_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+        self.pdf_paths = self.load_documents()
         self.embeddings = OpenAIEmbeddings()
-        self.documents = self.load_documents()
         self.vectorstore = self.create_vectorstore()
 
     def load_documents(self):
-        loader = DirectoryLoader(self.folder_path, glob="*.pdf", loader_cls=PyPDFLoader)
-        return loader.load()
+        pdf_paths = list(Path(self.folder_path).rglob("*.pdf"))
+        return [str(path) for path in pdf_paths]
+    
+    def extract_metadata_from_pdf(self, pdf_path):
+        """Extract metadata from the PDF."""
+        reader = pypdf.PdfReader(pdf_path)
+        metadata = reader.metadata
+        return {
+            "title": metadata.get("/Title", "").strip(),
+            "author": metadata.get("/Author", "").strip(),
+            "creation_date": metadata.get("/CreationDate", "").strip(),
+        }
+
+    def extract_pages_from_pdf(self, pdf_path):
+        reader = pypdf.PdfReader(pdf_path)
+        pages = []
+        #st.write(pages)
+        for page_num, page in enumerate(reader.pages):
+            text = page.extract_text()
+            if text.strip():  # Check if extracted text is not empty
+                pages.append((page_num + 1, text))
+        return pages
+    
+    def parse_pdf(self, pdf_path):
+        pages = self.extract_pages_from_pdf(pdf_path)
+        metadata = self.extract_metadata_from_pdf(pdf_path)
+        return pages, metadata
+    
+    @staticmethod
+    def merge_hyphenated_words(text):
+        return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+
+    @staticmethod
+    def fix_newlines(text):
+        return re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+
+    @staticmethod
+    def remove_multiple_newlines(text):
+        return re.sub(r"\n{2,}", "\n", text)
+
+    def clean_text(self, pages):
+        cleaning_functions = [
+            self.merge_hyphenated_words,
+            self.fix_newlines,
+            self.remove_multiple_newlines,
+        ]
+        cleaned_pages = []
+        #st.write(cleaned_pages)
+        #st.write(pages)
+        for page_num, text in pages:
+            for cleaning_function in cleaning_functions:
+                text = cleaning_function(text)
+            cleaned_pages.append((page_num, text))
+        return cleaned_pages
+
+    def text_to_docs(self, cleaned_text):
+        doc_chunks = []
+        for page_num, page in cleaned_text:
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=2000,
+                separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
+                chunk_overlap=200,
+            )
+            chunks = text_splitter.split_text(page)
+            for i, chunk in enumerate(chunks):
+                doc = Document(
+                    page_content=chunk,
+                    metadata={
+                        "page_number": page_num,
+                        "chunk": i,
+                        "source": f"p{page_num}-{i}",
+                        "file_name": self.metadata["file_name"],  # Assuming pdf_path is accessible here
+                        **self.metadata,
+                    },
+                )
+                doc_chunks.append(doc)
+                st.write(doc_chunks)
+        return doc_chunks
+
+    def load_and_process_documents(self):
+        documents = []
+        for pdf_path in self.pdf_paths:
+            #st.write(f"Processing: {pdf_path}")
+            pages, self.metadata = self.parse_pdf(pdf_path)
+            file_name = Path(pdf_path).name
+            self.metadata["file_name"] = file_name
+            cleaned_pages = self.clean_text(pages)
+            docs = self.text_to_docs(cleaned_pages)
+            documents.extend(docs)
+        return documents
 
     def create_vectorstore(self):
-        docs = self.documents_splitter.split_documents(self.documents)
-        st.write(docs)
-        project_vectorstore = FAISS.from_documents(docs, self.embeddings)
+        documents = self.load_and_process_documents()
+        project_vectorstore = FAISS.from_documents(documents, self.embeddings)
         st.session_state.project_vectorstore = project_vectorstore
         return project_vectorstore
 
