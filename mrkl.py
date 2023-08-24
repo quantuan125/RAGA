@@ -126,7 +126,7 @@ class DBStore:
                     },
                 )
                 doc_chunks.append(doc)
-            st.write(doc_chunks)
+            #st.write(doc_chunks)
         return doc_chunks
     
     def get_pdf_text(self):
@@ -138,7 +138,7 @@ class DBStore:
     def get_vectorstore(self):
         document_chunks = self.get_pdf_text()
         vector_store = FAISS.from_documents(documents=document_chunks, embedding=self.embeddings)
-        st.write(vector_store)
+        #st.write(vector_store)
         return vector_store
    
 class DatabaseTool:
@@ -325,7 +325,7 @@ class MRKL:
             metadata = st.session_state.document_metadata
             llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
 
-            st.write(llm_database.get_description())
+            #st.write(llm_database.get_description())
 
             tools.append(
                 Tool(
@@ -532,9 +532,16 @@ def main():
                         vector_store = db_store.get_vectorstore()
                         st.session_state.vector_store = vector_store
                         st.session_state.agent = MRKL()
-                        st.write(st.session_state.document_metadata)
+                        #st.write(st.session_state.document_metadata)
                         st.success("PDF uploaded successfully!")
-    
+
+                    st.button("Summarize")
+
+    with st.expander("Show Summary"):
+        st.subheader("Summarization")
+        #if st.session_state.summary is not None:
+            #result_summary = st.session_state.summary
+            #st.write(result_summary)
 
     display_messages(st.session_state.messages)
 
@@ -578,8 +585,8 @@ def main():
 
     st.write(st.session_state.history)
     #st.write(st.session_state.messages)
-    st.write(st.session_state.vector_store)
-    st.write(st.session_state.project_vectorstore)
+    #st.write(st.session_state.vector_store)
+    #st.write(st.session_state.project_vectorstore)
 
 
 
