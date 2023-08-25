@@ -24,9 +24,12 @@ from pathlib import Path
 from langchain.docstore.document import Document
 from langchain.chains.router import MultiRetrievalQAChain
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader
+from langchain.chains.summarize import load_summarize_chain
+from langchain import PromptTemplate
 
 
-
+def on_selectbox_change():
+    st.session_state.show_info = True
 
 def reset_chat():
     st.session_state.messages = [{"roles": "assistant", "content": "How can I help you?"}]
@@ -34,6 +37,7 @@ def reset_chat():
     st.session_state.search_keywords = []
     st.session_state.doc_sources = []
     st.session_state.history = None
+    st.session_state.summary = None
     st.session_state.agent.clear_conversation()
 
     
@@ -281,6 +285,50 @@ class US_Constitution_Database:
         st.session_state.doc_sources = output['source_documents']
         return output['result']
 
+class SummarizationTool():
+    def __init__(self, document_chunks):
+        self.llm = ChatOpenAI(
+            temperature=0, 
+            streaming=True,
+            model_name="gpt-3.5-turbo"
+        )
+        self.document_chunks = document_chunks
+        self.map_prompt_template, self.combine_prompt_template = self.load_prompts()
+        self.chain = self.load_summarize_chain()
+
+    def load_prompts(self):
+        map_prompt = '''
+        Summarize the following text in a clear and concise way:
+        TEXT:`{text}`
+        Brief Summary:
+        '''
+        combine_prompt = '''
+        Generate a summary of the following text that includes the following elements:
+
+        * A title that accurately reflects the content of the text.
+        * An introduction paragraph that provides an overview of the topic.
+        * Bullet points that list the key points of the text.
+
+        Text:`{text}`
+        '''
+        map_prompt_template = PromptTemplate(template=map_prompt, input_variables=["text"])
+        combine_prompt_template = PromptTemplate(template=combine_prompt, input_variables=["text"])
+        return map_prompt_template, combine_prompt_template
+    
+    def load_summarize_chain(self):
+        return load_summarize_chain(
+            llm=self.llm,
+            chain_type='map_reduce',
+            map_prompt=self.map_prompt_template,
+            combine_prompt=self.combine_prompt_template,
+            verbose=True
+        )
+
+    def run(self, query=None):
+        return self.run_chain()
+
+    def run_chain(self):
+        return self.chain.run(self.document_chunks)
 
 class MRKL:
     def __init__(self):
@@ -320,6 +368,8 @@ class MRKL:
             ),
         ]
 
+
+
         # Only add the DatabaseTool if vector_store exists
         if st.session_state.vector_store is not None:
             metadata = st.session_state.document_metadata
@@ -327,13 +377,14 @@ class MRKL:
 
             #st.write(llm_database.get_description())
 
-            tools.append(
+            tools.extend([
                 Tool(
                     name='Document Database',
                     func=llm_database.run,
                     description=llm_database.get_description(),
-                )
-            )
+                ),
+            ])
+        
         return tools
 
     def load_agent(self):
@@ -475,7 +526,6 @@ class MRKL:
         return response
 
 
-
 def main():
     load_dotenv()
 
@@ -488,12 +538,16 @@ def main():
         st.session_state.user_input = None
     if "vector_store" not in st.session_state:
         st.session_state.vector_store = None
+    if "summary" not in st.session_state:
+        st.session_state.summary = None
     if "doc_sources" not in st.session_state:
         st.session_state.doc_sources = []
     if "history" not in st.session_state:
         st.session_state.history = []
     if "agent" not in st.session_state:
         st.session_state.agent = MRKL()
+    if 'show_info' not in st.session_state:
+        st.session_state.show_info = False
 
 
 
@@ -510,7 +564,7 @@ def main():
             file_details["FileSize"].append(file.size)
 
         # Use selectbox to choose a file
-        selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"])
+        selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
 
         # Get the index of the file selected
         file_index = file_details["FileName"].index(selected_file_name)
@@ -521,6 +575,11 @@ def main():
         st.sidebar.write("FileType : ", file_details["FileType"][file_index])
         st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
 
+        # Add a note to remind the user to press the "Process" button
+        if st.session_state.show_info:
+            st.sidebar.info("**Note:** Remember to press the 'Process' button for the current selection.")
+            st.session_state.show_info = False
+
         with st.sidebar:
             if st.sidebar.button("Process"):
                 with st.spinner("Processing"):
@@ -529,19 +588,25 @@ def main():
                         tmpfile.write(selected_file.getvalue())
                         temp_path = tmpfile.name
                         db_store = DBStore(temp_path, selected_file.name)
+
+                        document_chunks = db_store.get_pdf_text()
+                        st.session_state.document_chunks = document_chunks
+                        st.write(document_chunks)
+
                         vector_store = db_store.get_vectorstore()
                         st.session_state.vector_store = vector_store
                         st.session_state.agent = MRKL()
                         #st.write(st.session_state.document_metadata)
                         st.success("PDF uploaded successfully!")
 
-                    st.button("Summarize")
+            if "document_chunks" in st.session_state:
+                    if st.sidebar.button("Create Summary"):
+                        with st.spinner("Summarizing"):
+                            summarization_tool = SummarizationTool(document_chunks=st.session_state.document_chunks)
+                            st.session_state.summary = summarization_tool.run()
+                            # Append the summary to the chat messages
+                            st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
-    with st.expander("Show Summary"):
-        st.subheader("Summarization")
-        #if st.session_state.summary is not None:
-            #result_summary = st.session_state.summary
-            #st.write(result_summary)
 
     display_messages(st.session_state.messages)
 
@@ -576,6 +641,12 @@ def main():
                     st.write(source_text)
         else:
                 st.write("No document sources found")
+    
+    if st.session_state.summary is not None:
+        with st.expander("Show Summary"):
+            st.subheader("Summarization")
+            result_summary = st.session_state.summary
+            st.write(result_summary)
 
 
     buttons_placeholder = st.container()
