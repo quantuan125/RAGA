@@ -30,6 +30,9 @@ from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain.chains.query_constructor.base import AttributeInfo
 import lark
 from langchain.schema import Document
+import chromadb
+from chromadb.config import Settings
+from streamlit_toggle import st_toggle_switch
 
 
 def on_selectbox_change():
@@ -44,7 +47,6 @@ def reset_chat():
     st.session_state.summary = None
     st.session_state.agent.clear_conversation()
 
-    
 def display_messages(messages):
     # Display all messages
     for msg in messages:
@@ -229,10 +231,8 @@ class BR18_DB:
         # Split the header-split documents into chunks
         all_splits = text_splitter.split_documents(md_header_splits)
 
-        
         # Output for debugging
 
-        
         return all_splits
     
     def process_all_documents(self):
@@ -243,19 +243,12 @@ class BR18_DB:
         return all_processed_splits
     
     def create_vectorstore(self):
-        persist_dir = "./chroma_db"
+        # Use the process_all_documents method to get all the processed splits
+        all_splits = self.process_all_documents()
+        st.write(all_splits)
 
-        # Check if the directory exists
-        if Path(persist_dir).exists():
-            # Load the vector store from disk
-            br18_vectorstore = Chroma(persist_directory=persist_dir, embedding_function=self.embeddings)
-            st.write("Loaded BR18 vectorstore from disk.")
-        else:
-            # Use the process_all_documents method to get all the processed splits
-            all_splits = self.process_all_documents()
-
-            # Create and save the vector store to disk
-            br18_vectorstore = Chroma.from_documents(documents=all_splits, embedding_function=self.embeddings, persist_directory=persist_dir)
+        # Create and save the vector store to disk
+        br18_vectorstore = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
 
         # Store the vector store in the session state
         st.session_state.br18_vectorstore = br18_vectorstore
@@ -267,27 +260,26 @@ class BR18_DB:
         metadata_field_info = [
             AttributeInfo(
                 name="Header 2",
-                description="Header of a section containing relevant words to its information",
+                description="Header containing relevant strings and words relevant to the information of the section",
                 type="string or list[string]",
             ),
             AttributeInfo(
                 name="Header 3",
-                description="Header of a section containing relevant words to its information",
+                description="Header containing relevant strings and words relevant to the information of the section",
                 type="string or list[string]",
             ),
             AttributeInfo(
                 name="Header 4",
-                description="Header of a section containing relevant words to its information",
+                description="Header containing relevant strings and words relevant to the information of the section",
                 type="string or list[string]",
             ),
         ]
         document_content_description = "Major sections of the document, organized by hierarchical levels of headers."
-        retriever = SelfQueryRetriever.from_llm(self.llm, self.vectorstore, document_content_description, metadata_field_info, verbose=True)
-        #st.write(retriever)    
+        retriever = SelfQueryRetriever.from_llm(self.llm, self.vectorstore, document_content_description, metadata_field_info, verbose=True)   
 
 
-        query = "What are the regulations regarding building permit application?"
-        #st.write(retriever.get_relevant_documents(query))
+        query = "What are the regulations regarding demolition of buildings?"
+        st.write(retriever.get_relevant_documents(query))
         return retriever
 
     def run(self, query: str):
@@ -488,8 +480,6 @@ class MRKL:
         llm_search = DuckDuckGoSearchRun()
 
         current_directory = os.getcwd()
-        br18_folder_path = os.path.join(current_directory, "BR18_DB")
-        llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)  # Replace with your folder path
 
         usc_folder_path = os.path.join(current_directory, "USC_DB")
         usc_db = USC_DB(llm=llm, folder_path=usc_folder_path)  # Replace with your folder path
@@ -506,11 +496,6 @@ class MRKL:
                 description='Useful for when you need to answer questions about math.'
             ),
             Tool(
-                name='BR18 Database',
-                func=llm_br18.run,
-                description="Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
-            ),
-            Tool(
                 name='USC Database',
                 func=usc_db.run,
                 description="Always useful for when you need to answer questions about the United State Constitution and The Bills of Rights. Input should be a fully formed question. Use this tool more often than the normal search tool"
@@ -524,18 +509,17 @@ class MRKL:
 
             #st.write(llm_database.get_description())
 
-            tools.extend([
+            tools.append(
                 Tool(
                     name='Document Database',
                     func=llm_database.run,
                     description=llm_database.get_description(),
                 ),
-            ])
-
-        if st.session_state.get("experimental_feature", False):
-            current_directory = os.getcwd()
+            )
+        
+        if st.session_state.br18_exp is True:
             br18_folder_path = os.path.join(current_directory, "BR18_DB")
-            llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)  # Replace with your folder path
+            llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)
 
             tools.append(
                 Tool(
@@ -545,10 +529,6 @@ class MRKL:
                 )
             )
         return tools
-
-
-
-
 
 
     def load_agent(self):
@@ -710,6 +690,9 @@ def main():
         st.session_state.doc_sources = []
     if "history" not in st.session_state:
         st.session_state.history = []
+    if 'br18_exp' not in st.session_state:
+        st.session_state.br18_exp = False
+
     if "agent" not in st.session_state:
         st.session_state.agent = MRKL()
     if 'show_info' not in st.session_state:
@@ -717,11 +700,13 @@ def main():
 
 
 
+    br18_experiment = st.sidebar.checkbox("Experimental Feature: Enable BR18 Database", value=False)
+    if br18_experiment != st.session_state.br18_exp:
+        st.session_state.br18_exp = br18_experiment
+        st.session_state.agent = MRKL()
+
 
     st.sidebar.title("Upload Local Vector DB")
-    experimental_feature = st.sidebar.toggle("Experimental Feature: Enable BR18 Database")
-    st.session_state.experimental_feature = experimental_feature
-
     uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
     if uploaded_files:
         file_details = {"FileName": [], "FileType": [], "FileSize": []}
@@ -815,7 +800,6 @@ def main():
         else:
                 st.write("No document sources found")
 
-
     
     
     if st.session_state.summary is not None:
@@ -833,7 +817,7 @@ def main():
     st.write(st.session_state.history)
     #st.write(st.session_state.messages)
     st.write(st.session_state.vector_store)
-    st.write(st.session_state.br18_vectorstore)
+    #st.write(st.session_state.br18_vectorstore)
     st.write(st.session_state.usc_vectorstore)
 
 
