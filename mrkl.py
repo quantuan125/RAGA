@@ -12,8 +12,8 @@ from langchain import LLMChain
 import streamlit as st
 from langchain.utilities import SerpAPIWrapper
 from langchain.chains import RetrievalQA
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import FAISS
+from langchain.text_splitter import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
+from langchain.vectorstores import FAISS, Chroma
 from langchain.embeddings import OpenAIEmbeddings
 from PyPDF2 import PdfReader
 import tempfile
@@ -23,9 +23,13 @@ import openai
 from pathlib import Path
 from langchain.docstore.document import Document
 from langchain.chains.router import MultiRetrievalQAChain
-from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader
+from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader, UnstructuredMarkdownLoader
 from langchain.chains.summarize import load_summarize_chain
 from langchain import PromptTemplate
+from langchain.retrievers.self_query.base import SelfQueryRetriever
+from langchain.chains.query_constructor.base import AttributeInfo
+import lark
+from langchain.schema import Document
 
 
 def on_selectbox_change():
@@ -171,10 +175,134 @@ class DatabaseTool:
         st.session_state.doc_sources = output['source_documents']
         return output['result']
 
-class US_Constitution_Database:
+class BR18_DB:
     def __init__(self, llm, folder_path: str):
         self.llm = llm
         self.folder_path = folder_path
+        self.md_paths = self.load_documents()  # Renamed from pdf_paths to md_paths
+        self.embeddings = OpenAIEmbeddings()
+        self.vectorstore = self.create_vectorstore()
+        self.retriever = self.create_retriever()
+
+    def load_documents(self):
+        md_paths = list(Path(self.folder_path).rglob("*.md"))
+        documents = []
+        for path in md_paths:
+            loader = TextLoader(str(path))
+            data = loader.load()
+            documents.extend(data)  # Assuming data is a list of Document objects
+        #st.text(documents)
+        return documents
+    
+    def split_and_chunk_text(self, markdown_document: Document):
+        # Extract the markdown text from the Document object
+        markdown_text = markdown_document.page_content
+        #st.write(f"Type of markdown_document: {type(markdown_document)}")
+        #st.markdown(markdown_text)
+        
+        # Define headers to split on
+        headers_to_split_on = [
+            ("#", "Header 1"),
+            ("##", "Header 2"),
+            ("###", "Header 3"),
+            ("####", "Header 4"),
+        ]
+        
+        # Initialize MarkdownHeaderTextSplitter
+        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+        #st.write(markdown_splitter)
+        
+        # Split the document by headers
+        md_header_splits = markdown_splitter.split_text(markdown_text)
+        #st.write(md_header_splits)
+        #st.write(type(md_header_splits[0]))
+        
+        # Define chunk size and overlap
+        chunk_size = 1000
+        chunk_overlap = 200
+        
+        # Initialize RecursiveCharacterTextSplitter
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
+        )
+        
+        # Split the header-split documents into chunks
+        all_splits = text_splitter.split_documents(md_header_splits)
+
+        
+        # Output for debugging
+
+        
+        return all_splits
+    
+    def process_all_documents(self):
+        all_processed_splits = []
+        for markdown_document in self.md_paths:
+            processed_splits = self.split_and_chunk_text(markdown_document)
+            all_processed_splits.extend(processed_splits)
+        return all_processed_splits
+    
+    def create_vectorstore(self):
+        persist_dir = "./chroma_db"
+
+        # Check if the directory exists
+        if Path(persist_dir).exists():
+            # Load the vector store from disk
+            br18_vectorstore = Chroma(persist_directory=persist_dir, embedding_function=self.embeddings)
+            st.write("Loaded BR18 vectorstore from disk.")
+        else:
+            # Use the process_all_documents method to get all the processed splits
+            all_splits = self.process_all_documents()
+
+            # Create and save the vector store to disk
+            br18_vectorstore = Chroma.from_documents(documents=all_splits, embedding_function=self.embeddings, persist_directory=persist_dir)
+
+        # Store the vector store in the session state
+        st.session_state.br18_vectorstore = br18_vectorstore
+
+        return br18_vectorstore
+    
+
+    def create_retriever(self):
+        metadata_field_info = [
+            AttributeInfo(
+                name="Header 2",
+                description="Header of a section containing relevant words to its information",
+                type="string or list[string]",
+            ),
+            AttributeInfo(
+                name="Header 3",
+                description="Header of a section containing relevant words to its information",
+                type="string or list[string]",
+            ),
+            AttributeInfo(
+                name="Header 4",
+                description="Header of a section containing relevant words to its information",
+                type="string or list[string]",
+            ),
+        ]
+        document_content_description = "Major sections of the document, organized by hierarchical levels of headers."
+        retriever = SelfQueryRetriever.from_llm(self.llm, self.vectorstore, document_content_description, metadata_field_info, verbose=True)
+        #st.write(retriever)    
+
+
+        query = "What are the regulations regarding building permit application?"
+        #st.write(retriever.get_relevant_documents(query))
+        return retriever
+
+    def run(self, query: str):
+        retrieval = RetrievalQA.from_chain_type(
+            llm=self.llm, chain_type="map_reduce", retriever=self.retriever, return_source_documents=True, verbose = True
+        )
+        output = retrieval(query)
+        st.session_state.doc_sources = output['source_documents']
+        return output['result']
+
+class USC_DB:
+    def __init__(self, llm, folder_path: str, index_path: str = "faiss_index"):
+        self.llm = llm
+        self.folder_path = folder_path
+        self.index_path = index_path
         self.pdf_paths = self.load_documents()
         self.embeddings = OpenAIEmbeddings()
         self.vectorstore = self.create_vectorstore()
@@ -182,6 +310,7 @@ class US_Constitution_Database:
     def load_documents(self):
         pdf_paths = list(Path(self.folder_path).rglob("*.pdf"))
         return [str(path) for path in pdf_paths]
+    
     
     def extract_metadata_from_pdf(self, pdf_path):
         """Extract metadata from the PDF."""
@@ -239,9 +368,9 @@ class US_Constitution_Database:
         doc_chunks = []
         for page_num, page in cleaned_text:
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=2000,
+                chunk_size=1500,
                 separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
-                chunk_overlap=200,
+                chunk_overlap=150,
             )
             chunks = text_splitter.split_text(page)
             for i, chunk in enumerate(chunks):
@@ -256,7 +385,7 @@ class US_Constitution_Database:
                     },
                 )
                 doc_chunks.append(doc)
-                #st.write(doc_chunks)
+        st.write(doc_chunks)
         return doc_chunks
 
     def load_and_process_documents(self):
@@ -271,11 +400,23 @@ class US_Constitution_Database:
             documents.extend(docs)
         return documents
 
-    def create_vectorstore(self):
-        documents = self.load_and_process_documents()
-        project_vectorstore = FAISS.from_documents(documents, self.embeddings)
-        st.session_state.project_vectorstore = project_vectorstore
-        return project_vectorstore
+    def create_vectorstore(self, index_path="faiss_index"):
+        if os.path.exists(index_path):
+            # Load the existing FAISS index from disk
+            usc_vectorstore = FAISS.load_local(index_path, self.embeddings)
+            st.write("Loaded USC vectorstore from disk.")
+        else:
+            # Create a new FAISS index
+            st.write("Creating new vectorstore...")
+            documents = self.load_and_process_documents()
+            usc_vectorstore = FAISS.from_documents(documents, self.embeddings)
+            
+            # Save the new FAISS index to disk
+            usc_vectorstore.save_local(index_path)
+            st.write(f"Saved vectorstore to {index_path}.")
+
+        st.session_state.usc_vectorstore = usc_vectorstore
+        return usc_vectorstore
 
     def run(self, query: str):
         retrieval = RetrievalQA.from_chain_type(
@@ -347,8 +488,11 @@ class MRKL:
         llm_search = DuckDuckGoSearchRun()
 
         current_directory = os.getcwd()
-        folder_path = os.path.join(current_directory, "US_Constitution")
-        usc_db = US_Constitution_Database(llm=llm, folder_path=folder_path)  # Replace with your folder path
+        br18_folder_path = os.path.join(current_directory, "BR18_DB")
+        llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)  # Replace with your folder path
+
+        usc_folder_path = os.path.join(current_directory, "USC_DB")
+        usc_db = USC_DB(llm=llm, folder_path=usc_folder_path)  # Replace with your folder path
 
         tools = [
             Tool(
@@ -362,13 +506,16 @@ class MRKL:
                 description='Useful for when you need to answer questions about math.'
             ),
             Tool(
-                name='US Constitution Database',
+                name='BR18 Database',
+                func=llm_br18.run,
+                description="Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
+            ),
+            Tool(
+                name='USC Database',
                 func=usc_db.run,
                 description="Always useful for when you need to answer questions about the United State Constitution and The Bills of Rights. Input should be a fully formed question. Use this tool more often than the normal search tool"
             ),
         ]
-
-
 
         # Only add the DatabaseTool if vector_store exists
         if st.session_state.vector_store is not None:
@@ -384,8 +531,25 @@ class MRKL:
                     description=llm_database.get_description(),
                 ),
             ])
-        
+
+        if st.session_state.get("experimental_feature", False):
+            current_directory = os.getcwd()
+            br18_folder_path = os.path.join(current_directory, "BR18_DB")
+            llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)  # Replace with your folder path
+
+            tools.append(
+                Tool(
+                    name='BR18 Database',
+                    func=llm_br18.run,
+                    description="Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
+                )
+            )
         return tools
+
+
+
+
+
 
     def load_agent(self):
         llm = ChatOpenAI(
@@ -398,11 +562,13 @@ class MRKL:
 
         Overall, Assistant is a powerful tool that can help with a wide range of tasks and provide valuable insights and information on a wide range of topics. 
 
-        Assistant has access to the 'US Constitution Database' which contains information about the United State Constitution and The Bills of Rights project. Always search in the 'US Constitution Database' if the user query is related about the United State Constitution and The Bills of Rights
+        Assistant has access to the 'BR18 Database' which contains information about the Building Regulation 2018 in Denmark. Always search in the 'BR18 Database' if the user query is related to building regulation and laws. Your answers should always be detailed while citing the clauses number within the bracket. 
+
+        Assistant also access to the 'USC Database' which contains information about the United State Constitution and The Bills of Rights project. Always search in this database if the user query is related about the United State Constitution and The Bills of Rights
         
         Otherwise, always search for answers and relevant examples within PDF pages (documents) provided in the 'Document Database'. The 'Document Database' contains general information from uploaded documents.  
         
-        If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from either the 'US Constitution Database' or the 'Document Database' before resorting to general internet search.
+        If you are unable to find sufficient information you may use a general internet search to find results. However, always prioritize providing answers and examples from either the 'BR18 Database' or the 'Document Database' before resorting to general internet search.
 
         If the user question does not require any tools, simply kindly respond back in an assitive manner as a Final Answer
 
@@ -423,7 +589,7 @@ class MRKL:
         ... (this Thought/Action/Action Input/Observation can repeat N times)
 
         Final Thought: I now know the final answer
-        Final Answer: the final answer to the original input question.
+        Final Answer: the final answer to the original input.
         '''
         """
 
@@ -553,6 +719,9 @@ def main():
 
 
     st.sidebar.title("Upload Local Vector DB")
+    experimental_feature = st.sidebar.toggle("Experimental Feature: Enable BR18 Database")
+    st.session_state.experimental_feature = experimental_feature
+
     uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
     if uploaded_files:
         file_details = {"FileName": [], "FileType": [], "FileSize": []}
@@ -608,6 +777,10 @@ def main():
                             st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
 
+
+            
+
+
     display_messages(st.session_state.messages)
 
     if user_input := st.chat_input("Type something here..."):
@@ -637,10 +810,13 @@ def main():
 
             for document in st.session_state.doc_sources:
                     st.divider()
-                    source_text = f"{document.page_content}\n\nDocument: {document.metadata['file_name']}\n\nPage Number: {document.metadata['page_number']}\n -Chunk: {document.metadata['chunk']}"
+                    source_text = f"{document.page_content}"
                     st.write(source_text)
         else:
                 st.write("No document sources found")
+
+
+    
     
     if st.session_state.summary is not None:
         with st.expander("Show Summary"):
@@ -656,10 +832,17 @@ def main():
 
     st.write(st.session_state.history)
     #st.write(st.session_state.messages)
-    #st.write(st.session_state.vector_store)
-    #st.write(st.session_state.project_vectorstore)
+    st.write(st.session_state.vector_store)
+    st.write(st.session_state.br18_vectorstore)
+    st.write(st.session_state.usc_vectorstore)
+
 
 
 
 if __name__== '__main__':
     main()
+
+
+
+
+    
