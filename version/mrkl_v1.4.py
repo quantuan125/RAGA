@@ -399,7 +399,7 @@ class USC_DB:
         if os.path.exists(index_path):
             # Load the existing FAISS index from disk
             usc_vectorstore = FAISS.load_local(index_path, self.embeddings)
-            #st.write("Loaded USC vectorstore from disk.")
+            st.write("Loaded USC vectorstore from disk.")
         else:
             # Create a new FAISS index
             st.write("Creating new vectorstore...")
@@ -408,7 +408,7 @@ class USC_DB:
             
             # Save the new FAISS index to disk
             usc_vectorstore.save_local(index_path)
-            #st.write(f"Saved vectorstore to {index_path}.")
+            st.write(f"Saved vectorstore to {index_path}.")
 
         st.session_state.usc_vectorstore = usc_vectorstore
         return usc_vectorstore
@@ -510,7 +510,7 @@ class MRKL:
             metadata = st.session_state.document_metadata
             llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
 
-            #st.write(llm_database.get_description())
+            st.write(llm_database.get_description())
 
             tools.append(
                 Tool(
@@ -542,6 +542,8 @@ class MRKL:
             )
 
         PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, focusing on the construction industry and related legal and regulatory matters. Your primary role is to provide detailed, structured, and high-quality answers based on authoritative sources.
+
+        Remember you have the ability to read and translate Roman numerals to regular numbers. Example: XVII = 17. 
 
         If you cannot find sufficient information in these databases, only then proceed to use a general internet search. 
 
@@ -676,14 +678,15 @@ class MRKL:
 
 
 def main():
+    load_dotenv()
 
     st.set_page_config(page_title="MRKL AGENT", page_icon="🦜️", layout="wide")
     st.title("🦜️ MRKL AGENT")
 
-    if 'openai' not in st.session_state:
-        st.session_state.openai = None
+    
+
     if "messages" not in st.session_state:
-        st.session_state.messages = [{"roles": "assistant", "content": "Hi, my name is MRKL. How can I help you?"}]
+        st.session_state.messages = [{"roles": "assistant", "content": "How can I help you?"}]
     if "user_input" not in st.session_state:
         st.session_state.user_input = None
     if "vector_store" not in st.session_state:
@@ -711,131 +714,130 @@ def main():
             os.environ["OPENAI_API_KEY"] = openai_api_key
             st.write("API key has entered")
 
-    if st.session_state.openai is not None: 
-        br18_experiment = st.sidebar.checkbox("Experimental Feature: Enable BR18 Database", value=False)
-        if br18_experiment != st.session_state.br18_exp:
-            st.session_state.br18_exp = br18_experiment
-            st.session_state.agent = MRKL()
 
-        chat_mode_experiment = st.sidebar.checkbox("Experimental Feature: Chat Mode", value=False)
-        if chat_mode_experiment != st.session_state.chat_mode:
-            st.session_state.chat_mode = chat_mode_experiment
-            st.session_state.agent = MRKL()
-            reset_chat()
+    br18_experiment = st.sidebar.checkbox("Experimental Feature: Enable BR18 Database", value=False)
+    if br18_experiment != st.session_state.br18_exp:
+        st.session_state.br18_exp = br18_experiment
+        st.session_state.agent = MRKL()
 
-
-        st.sidebar.title("Upload Local Vector DB")
-        uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
-        if uploaded_files:
-            file_details = {"FileName": [], "FileType": [], "FileSize": []}
-
-            # Populate file_details using traditional loops
-            for file in uploaded_files:
-                file_details["FileName"].append(file.name)
-                file_details["FileType"].append(file.type)
-                file_details["FileSize"].append(file.size)
-
-            # Use selectbox to choose a file
-            selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
-
-            # Get the index of the file selected
-            file_index = file_details["FileName"].index(selected_file_name)
-
-            # Display details of the selected file
-            st.sidebar.write("You selected:")
-            st.sidebar.write("FileName : ", file_details["FileName"][file_index])
-            st.sidebar.write("FileType : ", file_details["FileType"][file_index])
-            st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
-
-            # Add a note to remind the user to press the "Process" button
-            if st.session_state.show_info:
-                st.sidebar.info("**Note:** Remember to press the 'Process' button for the current selection.")
-                st.session_state.show_info = False
-
-            with st.sidebar:
-                if st.sidebar.button("Process"):
-                    with st.spinner("Processing"):
-                        selected_file = uploaded_files[file_index]
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-                            tmpfile.write(selected_file.getvalue())
-                            temp_path = tmpfile.name
-                            db_store = DBStore(temp_path, selected_file.name)
-
-                            document_chunks = db_store.get_pdf_text()
-                            st.session_state.document_chunks = document_chunks
-                            #st.write(document_chunks)
-
-                            vector_store = db_store.get_vectorstore()
-                            st.session_state.vector_store = vector_store
-                            st.session_state.agent = MRKL()
-                            #st.write(st.session_state.document_metadata)
-                            st.success("PDF uploaded successfully!")
-
-                if "document_chunks" in st.session_state:
-                        if st.sidebar.button("Create Summary"):
-                            with st.spinner("Summarizing"):
-                                summarization_tool = SummarizationTool(document_chunks=st.session_state.document_chunks)
-                                st.session_state.summary = summarization_tool.run()
-                                # Append the summary to the chat messages
-                                st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
+    chat_mode_experiment = st.sidebar.checkbox("Experimental Feature: Chat Mode", value=False)
+    if chat_mode_experiment != st.session_state.chat_mode:
+        st.session_state.chat_mode = chat_mode_experiment
+        st.session_state.agent = MRKL()
 
 
+    st.sidebar.title("Upload Local Vector DB")
+    uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
+    if uploaded_files:
+        file_details = {"FileName": [], "FileType": [], "FileSize": []}
 
-        display_messages(st.session_state.messages)
+        # Populate file_details using traditional loops
+        for file in uploaded_files:
+            file_details["FileName"].append(file.name)
+            file_details["FileType"].append(file.type)
+            file_details["FileSize"].append(file.size)
 
-        if user_input := st.chat_input("Type something here..."):
-            st.session_state.user_input = user_input
-            st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
-            st.chat_message("user").write(st.session_state.user_input)
+        # Use selectbox to choose a file
+        selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
 
-            current_user_message = {"input": st.session_state.user_input}
+        # Get the index of the file selected
+        file_index = file_details["FileName"].index(selected_file_name)
 
+        # Display details of the selected file
+        st.sidebar.write("You selected:")
+        st.sidebar.write("FileName : ", file_details["FileName"][file_index])
+        st.sidebar.write("FileType : ", file_details["FileType"][file_index])
+        st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
 
-            with st.chat_message("assistant"):
-                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-                response = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
-                st.session_state.messages.append({"roles": "assistant", "content": response})
-                st.write(response)
+        # Add a note to remind the user to press the "Process" button
+        if st.session_state.show_info:
+            st.sidebar.info("**Note:** Remember to press the 'Process' button for the current selection.")
+            st.session_state.show_info = False
 
-                current_assistant_response = {"output": response}
+        with st.sidebar:
+            if st.sidebar.button("Process"):
+                with st.spinner("Processing"):
+                    selected_file = uploaded_files[file_index]
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+                        tmpfile.write(selected_file.getvalue())
+                        temp_path = tmpfile.name
+                        db_store = DBStore(temp_path, selected_file.name)
 
-            current_messages = [current_user_message, current_assistant_response]    
-            st.session_state.history = st.session_state.agent.load_memory(current_messages)
+                        document_chunks = db_store.get_pdf_text()
+                        st.session_state.document_chunks = document_chunks
+                        #st.write(document_chunks)
+
+                        vector_store = db_store.get_vectorstore()
+                        st.session_state.vector_store = vector_store
+                        st.session_state.agent = MRKL()
+                        #st.write(st.session_state.document_metadata)
+                        st.success("PDF uploaded successfully!")
+
+            if "document_chunks" in st.session_state:
+                    if st.sidebar.button("Create Summary"):
+                        with st.spinner("Summarizing"):
+                            summarization_tool = SummarizationTool(document_chunks=st.session_state.document_chunks)
+                            st.session_state.summary = summarization_tool.run()
+                            # Append the summary to the chat messages
+                            st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
 
 
-        with st.expander("View Document Sources"):
-            if len(st.session_state.doc_sources) != 0:
+    display_messages(st.session_state.messages)
 
-                for document in st.session_state.doc_sources:
-                    st.divider()
-                    st.subheader("Source Content:")
-                    st.write(document.page_content)
-                    st.subheader("Metadata:")
-                    for key, value in document.metadata.items():
-                        st.write(f"{key}: {value}")
-            else:
-                    st.write("No document sources found")
+    if user_input := st.chat_input("Type something here..."):
+        st.session_state.user_input = user_input
+        st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
+        st.chat_message("user").write(st.session_state.user_input)
 
-        
-        
-        if st.session_state.summary is not None:
-            with st.expander("Show Summary"):
-                st.subheader("Summarization")
-                result_summary = st.session_state.summary
-                st.write(result_summary)
+        current_user_message = {"input": st.session_state.user_input}
 
 
-        buttons_placeholder = st.container()
-        with buttons_placeholder:
-            #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-            st.button("Clear Chat", key="clear", on_click=reset_chat)
+        with st.chat_message("assistant"):
+            st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+            response = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+            st.session_state.messages.append({"roles": "assistant", "content": response})
+            st.write(response)
 
-        st.write(st.session_state.history)
-        #st.write(st.session_state.messages)
-        st.write(st.session_state.vector_store)
-        #st.write(st.session_state.br18_vectorstore)
-        st.write(st.session_state.usc_vectorstore)
+            current_assistant_response = {"output": response}
+
+        current_messages = [current_user_message, current_assistant_response]    
+        st.session_state.history = st.session_state.agent.load_memory(current_messages)
+
+
+
+    with st.expander("View Document Sources"):
+        if len(st.session_state.doc_sources) != 0:
+
+            for document in st.session_state.doc_sources:
+                st.divider()
+                st.subheader("Source Content:")
+                st.write(document.page_content)
+                st.subheader("Metadata:")
+                for key, value in document.metadata.items():
+                    st.write(f"{key}: {value}")
+        else:
+                st.write("No document sources found")
+
+    
+    
+    if st.session_state.summary is not None:
+        with st.expander("Show Summary"):
+            st.subheader("Summarization")
+            result_summary = st.session_state.summary
+            st.write(result_summary)
+
+
+    buttons_placeholder = st.container()
+    with buttons_placeholder:
+        #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
+        st.button("Clear Chat", key="clear", on_click=reset_chat)
+
+    st.write(st.session_state.history)
+    #st.write(st.session_state.messages)
+    st.write(st.session_state.vector_store)
+    #st.write(st.session_state.br18_vectorstore)
+    st.write(st.session_state.usc_vectorstore)
 
 
 
