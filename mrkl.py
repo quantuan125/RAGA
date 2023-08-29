@@ -33,7 +33,13 @@ import lark
 from langchain.schema import Document
 import chromadb
 from chromadb.config import Settings
+<<<<<<< HEAD
+=======
+from streamlit_toggle import st_toggle_switch
+import langchain
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
 
+langchain.verbose = True
 
 
 langchain.verbose=True
@@ -42,7 +48,7 @@ def on_selectbox_change():
     st.session_state.show_info = True
 
 def reset_chat():
-    st.session_state.messages = [{"roles": "assistant", "content": "How can I help you?"}]
+    st.session_state.messages = [{"roles": "assistant", "content": "Hi, I am Miracle. How can I help you?"}]
     st.session_state.history = []
     st.session_state.search_keywords = []
     st.session_state.doc_sources = []
@@ -543,6 +549,8 @@ class MRKL:
 
         PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, focusing on the construction industry and related legal and regulatory matters. Your primary role is to provide detailed, structured, and high-quality answers based on authoritative sources.
 
+        Remember your ability in reading Roman numerials. Example: XVII = 17. 
+
         If you cannot find sufficient information in these databases, only then proceed to use a general internet search. 
 
         If the user question does not require any tools, simply kindly respond back in an assitive manner as a Final Answer
@@ -559,8 +567,13 @@ class MRKL:
         '''
         Question: the input question you must answer
         Thought: you should always think about what to do
+<<<<<<< HEAD
         Action: the action to take, should be one of [{tool_names}] or if no tool is needed, then use Thought as the Final Answer
         Action Input: the input to the action
+=======
+        Action: the action to take, should be one of [{tool_names}] 
+        Action Input: the input to the action, if no tool is needed then gives Thought as the Final Answer
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
         Observation: the result of the action 
 
         ... (this Thought/Action/Action Input/Observation can repeat N times)
@@ -571,7 +584,11 @@ class MRKL:
         """
 
         SUFFIX = """Begin! Remember to speak in a friendly and helpful manner
+<<<<<<< HEAD
         Previous conversation history:
+=======
+        Previous conversation history:]
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
         {chat_history}
         Question: {input}
         {agent_scratchpad}"""
@@ -582,7 +599,11 @@ class MRKL:
             prefix=PREFIX,
             suffix=SUFFIX,
             format_instructions=FORMAT_INSTRUCTIONS,
+<<<<<<< HEAD
             input_variables=["input","chat_history","agent_scratchpad"])
+=======
+            input_variables=["input", "chat_history", "agent_scratchpad"])
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
         
         def _handle_error(error) -> str:
             """If you encounter a parsing error:
@@ -597,6 +618,14 @@ class MRKL:
         else:
             k = 0
 
+<<<<<<< HEAD
+=======
+        if st.session_state.chat_exp is True:
+            k = 10
+        else:
+            k = 0
+
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
         memory = ConversationBufferWindowMemory(memory_key="chat_history", k=k)
 
         llm_chain = LLMChain(llm=llm, prompt=prompt)
@@ -683,7 +712,11 @@ def main():
     if 'openai' not in st.session_state:
         st.session_state.openai = None
     if "messages" not in st.session_state:
+<<<<<<< HEAD
         st.session_state.messages = [{"roles": "assistant", "content": "Hi, my name is MRKL. How can I help you?"}]
+=======
+        st.session_state.messages = [{"roles": "assistant", "content": "Hi, I am Miracle. How can I help you?"}]
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
     if "user_input" not in st.session_state:
         st.session_state.user_input = None
     if "vector_store" not in st.session_state:
@@ -696,8 +729,13 @@ def main():
         st.session_state.history = []
     if 'br18_exp' not in st.session_state:
         st.session_state.br18_exp = False
+<<<<<<< HEAD
     if 'chat_mode' not in st.session_state:
         st.session_state.chat_mode = False
+=======
+    if 'chat_exp' not in st.session_state:
+        st.session_state.chat_exp = False
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
 
     if "agent" not in st.session_state:
         st.session_state.agent = MRKL()
@@ -711,6 +749,7 @@ def main():
             os.environ["OPENAI_API_KEY"] = openai_api_key
             st.write("API key has entered")
 
+<<<<<<< HEAD
     if st.session_state.openai is not None: 
         br18_experiment = st.sidebar.checkbox("Experimental Feature: Enable BR18 Database", value=False)
         if br18_experiment != st.session_state.br18_exp:
@@ -720,9 +759,19 @@ def main():
         chat_mode_experiment = st.sidebar.checkbox("Experimental Feature: Chat Mode", value=False)
         if chat_mode_experiment != st.session_state.chat_mode:
             st.session_state.chat_mode = chat_mode_experiment
+=======
+    with st.sidebar:
+        chat_experiment = st_toggle_switch("Experimental Feature: Enable Memory", default_value=False)
+        if chat_experiment != st.session_state.chat_exp:
+            st.session_state.chat_exp = chat_experiment
+>>>>>>> e3be33dea953d4fcc0bc3d96ebf585fb69ee16ce
             st.session_state.agent = MRKL()
             reset_chat()
 
+        br18_experiment = st_toggle_switch("Experimental Feature: Enable BR18", default_value=False)
+        if br18_experiment != st.session_state.br18_exp:
+            st.session_state.br18_exp = br18_experiment
+            st.session_state.agent = MRKL()
 
         st.sidebar.title("Upload Local Vector DB")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
