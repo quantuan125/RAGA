@@ -248,7 +248,7 @@ class BR18_DB:
     def create_vectorstore(self):
         # Use the process_all_documents method to get all the processed splits
         all_splits = self.process_all_documents()
-        #st.write(all_splits)
+        st.write(all_splits)
 
         # Create and save the vector store to disk
         br18_vectorstore = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
@@ -263,7 +263,7 @@ class BR18_DB:
         metadata_field_info = [
             AttributeInfo(
                 name="Header 2",
-                description="Header containing relevant strings and words relevant to the information of the section",
+                description="Header containing the least relevant strings and words relevant to the information of the section",
                 type="string or list[string]",
             ),
             AttributeInfo(
@@ -273,16 +273,16 @@ class BR18_DB:
             ),
             AttributeInfo(
                 name="Header 4",
-                description="Header containing relevant strings and words relevant to the information of the section",
+                description="Header containing the most relevant strings and words relevant to the information of the section",
                 type="string or list[string]",
             ),
         ]
-        document_content_description = "Major sections of the document, organized by hierarchical levels of headers."
-        retriever = SelfQueryRetriever.from_llm(self.llm, self.vectorstore, document_content_description, metadata_field_info, verbose=True)   
+        document_content_description = "Major sections of the document, organized by hierarchical levels of headers. Given an user query, you should always look for content under 'Header 4' over 'Header 3' and over 'Header 2'"
+        retriever = SelfQueryRetriever.from_llm(self.llm, self.vectorstore, document_content_description, metadata_field_info, verbose=True, search_kwargs={"k": 10})   
 
 
-        query = "What are the regulations regarding demolition of buildings?"
-        #st.write(retriever.get_relevant_documents(query))
+        query = "What are the regulations regarding ventilation in residential buildings?"
+        st.write(retriever.get_relevant_documents(query))
         return retriever
 
     def run(self, query: str):
@@ -541,18 +541,13 @@ class MRKL:
             model_name="gpt-3.5-turbo-16k"
             )
 
-        PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, focusing on the construction industry and related legal and regulatory matters. Your primary role is to provide detailed, structured, and high-quality answers based on authoritative sources.
+        PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, a leading engineering company in construction and infrastructure. Your expertise lies in the construction industry, legal frameworks, and regulatory matters. Your primary role is to furnish detailed, structured, and high-quality answers grounded in authoritative sources.
 
-        Remember your ability in reading Roman numerials. Example: XVII = 17. 
+        Remember you have the following special Skills: You can interpret Roman numerals, distill complex documents into summaries, and provide nuanced answers by correlating different sources.
 
-        If you cannot find sufficient information in these databases, only then proceed to use a general internet search. 
+        Decision Guidelines: Always use your databases as primary sources, resort to general internet searches when you cannot find sufficient information, and offer direct Final Answers in an assistive and helpful manner when no tools are required
 
-        If the user question does not require any tools, simply kindly respond back in an assitive manner as a Final Answer
-
-        Your responses should aim to:
-        1. Provide an overview of the topic in question.
-        2. List key points or clauses in a bullet-point or numbered list format.
-        3. Match or exceed the quality of the information you've retrieved.
+        Response Objectives: Your answers should always be comprehensive, well-organized, and of equal or better quality than the sources you consult.
 
         You have access to the following tools:"""
 
@@ -568,12 +563,15 @@ class MRKL:
         ... (this Thought/Action/Action Input/Observation can repeat N times)
 
         Thought: I now know the final answer based on my observation
-        Final Answer: Your detailed and structured final answer to the original question, following the response guidelines.
+        Final Answer: Your detailed and structured final answer to the original question. Ensure that the answer adheres to the response objectives:
+                    1. Provides an overview of the topic.
+                    2. Lists key points or clauses in a bullet-point or numbered list format.
+                    3. Reflect back to the user question and gives a concise conclusion 
         '''
         """
 
-        SUFFIX = """Begin! Remember to speak in a friendly and helpful manner
-        Previous conversation history:]
+        SUFFIX = """Begin!  Maintain a professional and helpful demeanor in all interactions while uphold a high quality standard in your responses.
+        Previous conversation history:
         {chat_history}
         Question: {input}
         {agent_scratchpad}"""
@@ -714,131 +712,130 @@ def main():
             os.environ["OPENAI_API_KEY"] = openai_api_key
             st.write("API key has entered")
 
+    with st.sidebar:
+
+        chat_experiment = st.checkbox("Experimental Feature: Enable Memory", value=False)
+        if chat_experiment != st.session_state.chat_exp:
+            st.session_state.chat_exp = chat_experiment
+            st.session_state.agent = MRKL()
+            reset_chat()
+
+        br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
+        if br18_experiment != st.session_state.br18_exp:
+            st.session_state.br18_exp = br18_experiment
+            st.session_state.agent = MRKL()
+
+        st.sidebar.title("Upload Local Vector DB")
+        uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
+        if uploaded_files:
+            file_details = {"FileName": [], "FileType": [], "FileSize": []}
+
+            # Populate file_details using traditional loops
+            for file in uploaded_files:
+                file_details["FileName"].append(file.name)
+                file_details["FileType"].append(file.type)
+                file_details["FileSize"].append(file.size)
+
+            # Use selectbox to choose a file
+            selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
+
+            # Get the index of the file selected
+            file_index = file_details["FileName"].index(selected_file_name)
+
+            # Display details of the selected file
+            st.sidebar.write("You selected:")
+            st.sidebar.write("FileName : ", file_details["FileName"][file_index])
+            st.sidebar.write("FileType : ", file_details["FileType"][file_index])
+            st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
+
+            # Add a note to remind the user to press the "Process" button
+            if st.session_state.show_info:
+                st.sidebar.info("**Note:** Remember to press the 'Process' button for the current selection.")
+                st.session_state.show_info = False
+
             with st.sidebar:
+                if st.sidebar.button("Process"):
+                    with st.spinner("Processing"):
+                        selected_file = uploaded_files[file_index]
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+                            tmpfile.write(selected_file.getvalue())
+                            temp_path = tmpfile.name
+                            db_store = DBStore(temp_path, selected_file.name)
 
-                chat_experiment = st.checkbox("Experimental Feature: Enable Memory", value=False)
-                if chat_experiment != st.session_state.chat_exp:
-                    st.session_state.chat_exp = chat_experiment
-                    st.session_state.agent = MRKL()
-                    reset_chat()
+                            document_chunks = db_store.get_pdf_text()
+                            st.session_state.document_chunks = document_chunks
+                            #st.write(document_chunks)
 
-                br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
-                if br18_experiment != st.session_state.br18_exp:
-                    st.session_state.br18_exp = br18_experiment
-                    st.session_state.agent = MRKL()
+                            vector_store = db_store.get_vectorstore()
+                            st.session_state.vector_store = vector_store
+                            st.session_state.agent = MRKL()
+                            #st.write(st.session_state.document_metadata)
+                            st.success("PDF uploaded successfully!")
 
-                st.sidebar.title("Upload Local Vector DB")
-                uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
-                if uploaded_files:
-                    file_details = {"FileName": [], "FileType": [], "FileSize": []}
+                if "document_chunks" in st.session_state:
+                        if st.sidebar.button("Create Summary"):
+                            with st.spinner("Summarizing"):
+                                summarization_tool = SummarizationTool(document_chunks=st.session_state.document_chunks)
+                                st.session_state.summary = summarization_tool.run()
+                                # Append the summary to the chat messages
+                                st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
-                    # Populate file_details using traditional loops
-                    for file in uploaded_files:
-                        file_details["FileName"].append(file.name)
-                        file_details["FileType"].append(file.type)
-                        file_details["FileSize"].append(file.size)
 
-                    # Use selectbox to choose a file
-                    selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
+    display_messages(st.session_state.messages)
 
-                    # Get the index of the file selected
-                    file_index = file_details["FileName"].index(selected_file_name)
+    if user_input := st.chat_input("Type something here..."):
+        st.session_state.user_input = user_input
+        st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
+        st.chat_message("user").write(st.session_state.user_input)
 
-                    # Display details of the selected file
-                    st.sidebar.write("You selected:")
-                    st.sidebar.write("FileName : ", file_details["FileName"][file_index])
-                    st.sidebar.write("FileType : ", file_details["FileType"][file_index])
-                    st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
+        current_user_message = {"input": st.session_state.user_input}
 
-                    # Add a note to remind the user to press the "Process" button
-                    if st.session_state.show_info:
-                        st.sidebar.info("**Note:** Remember to press the 'Process' button for the current selection.")
-                        st.session_state.show_info = False
 
-                    with st.sidebar:
-                        if st.sidebar.button("Process"):
-                            with st.spinner("Processing"):
-                                selected_file = uploaded_files[file_index]
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-                                    tmpfile.write(selected_file.getvalue())
-                                    temp_path = tmpfile.name
-                                    db_store = DBStore(temp_path, selected_file.name)
+        with st.chat_message("assistant"):
+            st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
+            response = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+            st.session_state.messages.append({"roles": "assistant", "content": response})
+            st.write(response)
 
-                                    document_chunks = db_store.get_pdf_text()
-                                    st.session_state.document_chunks = document_chunks
-                                    #st.write(document_chunks)
+            current_assistant_response = {"output": response}
 
-                                    vector_store = db_store.get_vectorstore()
-                                    st.session_state.vector_store = vector_store
-                                    st.session_state.agent = MRKL()
-                                    #st.write(st.session_state.document_metadata)
-                                    st.success("PDF uploaded successfully!")
-
-                        if "document_chunks" in st.session_state:
-                                if st.sidebar.button("Create Summary"):
-                                    with st.spinner("Summarizing"):
-                                        summarization_tool = SummarizationTool(document_chunks=st.session_state.document_chunks)
-                                        st.session_state.summary = summarization_tool.run()
-                                        # Append the summary to the chat messages
-                                        st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
+        current_messages = [current_user_message, current_assistant_response]    
+        st.session_state.history = st.session_state.agent.load_memory(current_messages)
 
 
 
-            display_messages(st.session_state.messages)
+    with st.expander("View Document Sources"):
+        if len(st.session_state.doc_sources) != 0:
 
-            if user_input := st.chat_input("Type something here..."):
-                st.session_state.user_input = user_input
-                st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
-                st.chat_message("user").write(st.session_state.user_input)
+            for document in st.session_state.doc_sources:
+                st.divider()
+                st.subheader("Source Content:")
+                st.write(document.page_content)
+                st.subheader("Metadata:")
+                for key, value in document.metadata.items():
+                    st.write(f"{key}: {value}")
+        else:
+                st.write("No document sources found")
 
-                current_user_message = {"input": st.session_state.user_input}
-
-
-                with st.chat_message("assistant"):
-                    st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-                    response = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
-                    st.session_state.messages.append({"roles": "assistant", "content": response})
-                    st.write(response)
-
-                    current_assistant_response = {"output": response}
-
-                current_messages = [current_user_message, current_assistant_response]    
-                st.session_state.history = st.session_state.agent.load_memory(current_messages)
-
-
-
-            with st.expander("View Document Sources"):
-                if len(st.session_state.doc_sources) != 0:
-
-                    for document in st.session_state.doc_sources:
-                        st.divider()
-                        st.subheader("Source Content:")
-                        st.write(document.page_content)
-                        st.subheader("Metadata:")
-                        for key, value in document.metadata.items():
-                            st.write(f"{key}: {value}")
-                else:
-                        st.write("No document sources found")
-
-            
-            
-            if st.session_state.summary is not None:
-                with st.expander("Show Summary"):
-                    st.subheader("Summarization")
-                    result_summary = st.session_state.summary
-                    st.write(result_summary)
+    
+    
+    if st.session_state.summary is not None:
+        with st.expander("Show Summary"):
+            st.subheader("Summarization")
+            result_summary = st.session_state.summary
+            st.write(result_summary)
 
 
-            buttons_placeholder = st.container()
-            with buttons_placeholder:
-                #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-                st.button("Clear Chat", key="clear", on_click=reset_chat)
+    buttons_placeholder = st.container()
+    with buttons_placeholder:
+        #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
+        st.button("Clear Chat", key="clear", on_click=reset_chat)
 
-            st.write(st.session_state.history)
-            #st.write(st.session_state.messages)
-            st.write(st.session_state.vector_store)
-            #st.write(st.session_state.br18_vectorstore)
-            st.write(st.session_state.usc_vectorstore)
+    st.write(st.session_state.history)
+    #st.write(st.session_state.messages)
+    st.write(st.session_state.vector_store)
+    #st.write(st.session_state.br18_vectorstore)
+    st.write(st.session_state.usc_vectorstore)
 
 
 
