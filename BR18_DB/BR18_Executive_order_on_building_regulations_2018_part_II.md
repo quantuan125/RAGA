@@ -743,11 +743,8 @@ of this section.
 
 Operation, inspection and maintenance of hotels, etc., nursing institutions, community centres, day-care
 
-#### the building requires special operational measures to maintain the fire safety of the building Operation, inspection and maintenance of hotels, etc., nursing institutions, community centres, day-care facilities, etc. in which the use of
+#### Operation, inspection and maintenance of hotels, etc., nursing institutions, community centres, day-care facilities, etc. in which the use of the building requires special operational measures to maintain the fire safety of the building 
 
-```
-safety of the building
-```
 147. Operation, inspection and maintenance of the building sections stated below must be carried out in
 accordance with ss. 137-142 and s. 148:
 1) Bedroom sections with sleeping facilities for more than 10 persons at hotels, etc. and nursing
@@ -808,22 +805,15 @@ omitted.
 Guidelines of the Building Regulations on operation, inspection and maintenance are considered to be in
 accordance with ss. 137-142.
 
-#### fire safety of the building. Industrial and storage buildings for which the use of the buildings requires certain additional operational measures in order to maintain the
+#### Industrial and storage buildings for which the use of the buildings requires certain additional operational measures in order to maintain the fire safety of the building. 
 
-```
-operational measures in order to maintain the fire safety of the building.
-```
 153. Operation, inspection and maintenance of the building sections stated below must be carried out in
 accordance with ss. 137-142 and s. 154:
 1) Storage buildings with building sections in risk class 2 and a floor area exceeding 2,000 sq. metres.
-2) Storage buildings in risk class 2 with a stacking height above 8 metres and building sections larger
-
-
-```
-than 600 sq. metres.
+2) Storage buildings in risk class 2 with a stacking height above 8 metres and building sections larger than 600 sq. metres.
 3) Storage buildings in risk classes 3 and 4.
 4) Storage buildings where the use of the building requires special operational measures.
-```
+
 154. An operation, inspection and maintenance plan for building sections stated in s. 153 must be prepared
 to ensure that ss. 137-142 are complied with, and:
 1) Rules for prevention of fire, evacuation plans and contingency plans have been prepared.
@@ -841,13 +831,8 @@ operations and their contact information, must be prepared.
 plan is carried out according to the Guidelines of the Building Regulations on operation, inspection and
 maintenance.
 
-Transportable tents and structures, festival areas with associated sales and camping areas, assembly tents
+#### Transportable tents and structures, festival areas with associated sales and camping areas, assembly tent requires further operational measures in order to maintain fire safety in the building 
 
-#### requires further operational measures in order to maintain fire safety in the building Transportable tents and structures, festival areas with associated sales and camping areas, assembly tents and market places for which use
-
-```
-the building
-```
 156. Operation, maintenance and regular inspection of the following transportable structures and areas
 must be carried out in a way which ensures that ss. 137-142 and s. 157 are observed at all times:
 
@@ -1647,7 +1632,7 @@ Financial viability is assessed according to s. 275. This provision does not app
 listed buildings and buildings worthy of preservation, see s. 278.
 
 
-### Chapter 12 - Energy supply systems adjacent to buildings..........................................................................................................................
+### Chapter 12 - Energy supply systems adjacent to buildings
 
 299. In the planning, building, installation, operation and maintenance of energy supply systems adjacent
 to buildings, the following must be ensured:
@@ -2214,7 +2199,7 @@ Regulations for light intensity, and that daylight control, movement devices and
 according to their purpose.
 
 
-### Chapter 19 - Thermal indoor climate and installations for heating and cooling systems..........................................................................
+### Chapter 19 - Thermal indoor climate and installations for heating and cooling systems
 
 385. The thermal indoor climate of building must be sufficiently healthy and comfortable in consideration
 of their use.

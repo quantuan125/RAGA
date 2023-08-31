@@ -27,7 +27,7 @@ from langchain.chains.router import MultiRetrievalQAChain
 from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader, UnstructuredMarkdownLoader
 from langchain.chains.summarize import load_summarize_chain
 from langchain import PromptTemplate
-from langchain.retrievers.self_query.base import SelfQueryRetriever
+from langchain.retrievers import SelfQueryRetriever
 from langchain.chains.query_constructor.base import AttributeInfo
 import lark
 from langchain.schema import Document
@@ -37,6 +37,9 @@ import  streamlit_toggle as tog
 import langchain
 from langchain.callbacks.manager import CallbackManagerForRetrieverRun
 from typing import List, Set
+from langchain.vectorstores.base import VectorStoreRetriever
+from pydantic import Field
+from typing import List, Dict, Any
 
 langchain.verbose = True
 
@@ -182,64 +185,21 @@ class DatabaseTool:
         st.session_state.doc_sources = output['source_documents']
         return output['result']
 
-class CustomSelfQueryRetriever(SelfQueryRetriever):
-    stop_words = {"regulations", "buildings", "building", "regulation"}
+class FilteredVectorStoreRetriever(VectorStoreRetriever):
+    # Use the same initializers as the parent class
+    search_type: str = "similarity"
+    search_kwargs: dict = Field(default_factory=dict)
     
-    def filter_stop_words(self, query):
-        st.write(f"Original Query: {query}")  # Debug write
-        query_words = query.split()
-        
-        filtered_query = ' '.join(word for word in query_words if word.lower() not in self.stop_words)
-        st.write(f"Filtered Query: {filtered_query}")  # Debug write
-
-        # Check if the filtered query has fewer than N meaningful terms.
-        meaningful_terms = [word for word in filtered_query.split() if word.lower() not in {'what', 'are', 'the', 'regarding'}]
-        if len(meaningful_terms) < 2:  # Adjust this threshold as needed
-            return query  # revert to the original query
-        
-        return filtered_query
+    # Additional member to hold the filtered documents
+    filtered_documents: List[str] = Field(default_factory=list, description="The filtered documents")
     
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
-    ) -> List[Document]:
-        
-        # Remove stop words from the query
-        filtered_query = self.filter_stop_words(query.lower())
-        
-        # Step 1: Get the initial set of relevant documents
-        initial_docs = super()._get_relevant_documents(filtered_query, run_manager=run_manager)
-        
-        # Step 2: Sort the documents by header hierarchy
-        sorted_docs = sorted(initial_docs, key=self.header_priority, reverse=True)
-        
-        # Step 3: Check for keyword relevance in headers
-        query_keywords = set(filtered_query.split())
-        
-        filtered_docs = []
-        for doc in sorted_docs:
-            headers = doc.metadata  # Assuming headers are stored in metadata
-            for header_level in ['Header 4', 'Header 3', 'Header 2']:
-                header_content = headers.get(header_level, "").lower()
-                header_keywords = set(header_content.split())
-                
-                if query_keywords & header_keywords:  # Check for keyword overlap
-                    filtered_docs.append(doc)
-                    break  # No need to check other headers for this document
-        
-        return filtered_docs
+    def set_filtered_documents(self, filtered_documents: List[Document]):
+        self.filtered_documents = set([doc.page_content for doc in filtered_documents])
     
-    
-
-    def header_priority(self, doc):
-        headers = doc.metadata  # Assuming headers are stored in metadata
-        if 'Header 4' in headers:
-            return 3
-        elif 'Header 3' in headers:
-            return 2
-        elif 'Header 2' in headers:
-            return 1
-        else:
-            return 0
+    def get_relevant_documents(self, query: str, **kwargs: Any) -> List[Document]:
+        all_relevant_docs = super().get_relevant_documents(query, **kwargs)
+        filtered_relevant_docs = [doc for doc in all_relevant_docs if doc.page_content in self.filtered_documents]
+        return filtered_relevant_docs
 
 
 class BR18_DB:
@@ -248,7 +208,6 @@ class BR18_DB:
         self.folder_path = folder_path
         self.md_paths = self.load_documents()  # Renamed from pdf_paths to md_paths
         self.embeddings = OpenAIEmbeddings()
-        self.vectorstore = self.create_vectorstore()
         self.retriever = self.create_retriever()
 
     def load_documents(self):
@@ -307,24 +266,68 @@ class BR18_DB:
             all_processed_splits.extend(processed_splits)
         return all_processed_splits
     
-    def create_vectorstore(self):
-        # Use the process_all_documents method to get all the processed splits
-        all_splits = self.process_all_documents()
-        st.write(all_splits)
+    def get_keywords(self, query: str) -> list:
+        # Define the prompt template
+        prompt_template = """
+        The user is searching for specific information within a set of documents about building regulations in Denmark.
+        Exclude common terms like "building", "buildings", "regulations", and "regulation" from the extracted key terms.
+        Here is an example: 
+        User Query: "What is the building regulation regarding stairs"
+        Answer: "stairs"
 
-        # Create and save the vector store to disk
-        br18_vectorstore = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
+        Please list only the specific keywords from the following user query: {query}
+        """
+        llm_chain = LLMChain(
+            llm=self.llm,
+            prompt=PromptTemplate.from_template(prompt_template)
+        )
+        # Extract keywords from the query
+        keywords_str = llm_chain.predict(query=query)
+        # Convert the keywords string into a list
+        keywords = keywords_str.split(", ")
+        return keywords
 
-        # Store the vector store in the session state
-        st.session_state.br18_vectorstore = br18_vectorstore
+    def filter_documents_by_metadata(self, keywords: list) -> list:
+        filtered_documents = []
+        #st.write(filtered_documents)
+        for doc in self.process_all_documents():
+            metadata = doc.metadata
+            if any(keyword.lower() in metadata.get('Header 4', '').lower() for keyword in keywords):
+                filtered_documents.append(doc)
+        return filtered_documents
+        
+    def create_retriever(self):
+            # Step 1: Extract keywords from the user query
+        query = "What are the regulations regarding fencing?"
 
-        return br18_vectorstore
+        keywords = self.get_keywords(query)
+        st.write(keywords)
+
+        # Step 2: Filter documents based on the extracted keywords
+        filtered_documents = self.filter_documents_by_metadata(keywords)
+        st.write(filtered_documents)
+
+        filtered_vectorstore = Chroma.from_documents(filtered_documents, self.embeddings)
+
+        st.session_state.br18_vectorstore = filtered_vectorstore
+        
+        filtered_retriever = FilteredVectorStoreRetriever(vectorstore=filtered_vectorstore)
+        filtered_retriever.set_filtered_documents(filtered_documents)
+        st.write(filtered_retriever)
+        # Create a retriever from the existing VectorStore
+
+        relevant_documents = filtered_retriever.get_relevant_documents(query)
+        st.write(relevant_documents)
+
+        return filtered_retriever
 
     def run(self, query: str):
+
         retrieval = RetrievalQA.from_chain_type(
-            llm=self.llm, chain_type="map_reduce", retriever=self.vectorstore, return_source_documents=True, verbose = True
+            llm=self.llm, chain_type="map_reduce", retriever=self.retriever, return_source_documents=True, verbose = True
         )
         output = retrieval(query)
+
         st.session_state.doc_sources = output['source_documents']
         return output['result']
 
