@@ -35,6 +35,8 @@ import chromadb
 from chromadb.config import Settings
 import  streamlit_toggle as tog
 import langchain
+from langchain.callbacks.manager import CallbackManagerForRetrieverRun
+from typing import List, Set
 
 langchain.verbose = True
 
@@ -179,6 +181,52 @@ class DatabaseTool:
         output = self.retrieval(query)
         st.session_state.doc_sources = output['source_documents']
         return output['result']
+
+class CustomSelfQueryRetriever(SelfQueryRetriever):
+    stop_words = {"regulations", "buildings", "building", "regulation"}
+        
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> List[Document]:
+        
+        # Remove stop words from the query
+        query_words = query.lower().split()
+        filtered_query = " ".join([word for word in query_words if word not in self.stop_words])
+        
+        # Step 1: Get the initial set of relevant documents
+        initial_docs = super()._get_relevant_documents(filtered_query, run_manager=run_manager)
+        
+        # Step 2: Sort the documents by header hierarchy
+        sorted_docs = sorted(initial_docs, key=self.header_priority, reverse=True)
+        
+        # Step 3: Check for keyword relevance in headers
+        query_keywords = set(filtered_query.split())
+        
+        filtered_docs = []
+        for doc in sorted_docs:
+            headers = doc.metadata  # Assuming headers are stored in metadata
+            for header_level in ['Header 4', 'Header 3', 'Header 2']:
+                header_content = headers.get(header_level, "").lower()
+                header_keywords = set(header_content.split())
+                
+                if query_keywords & header_keywords:  # Check for keyword overlap
+                    filtered_docs.append(doc)
+                    break  # No need to check other headers for this document
+        
+        return filtered_docs
+
+    def header_priority(self, doc):
+        headers = doc.metadata  # Assuming headers are stored in metadata
+        if 'Header 4' in headers:
+            return 3
+        elif 'Header 3' in headers:
+            return 2
+        elif 'Header 2' in headers:
+            return 1
+        else:
+            return 0
+
+
 
 class BR18_DB:
     def __init__(self, llm, folder_path: str):
