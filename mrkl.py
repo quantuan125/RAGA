@@ -184,14 +184,27 @@ class DatabaseTool:
 
 class CustomSelfQueryRetriever(SelfQueryRetriever):
     stop_words = {"regulations", "buildings", "building", "regulation"}
+    
+    def filter_stop_words(self, query):
+        st.write(f"Original Query: {query}")  # Debug write
+        query_words = query.split()
         
+        filtered_query = ' '.join(word for word in query_words if word.lower() not in self.stop_words)
+        st.write(f"Filtered Query: {filtered_query}")  # Debug write
+
+        # Check if the filtered query has fewer than N meaningful terms.
+        meaningful_terms = [word for word in filtered_query.split() if word.lower() not in {'what', 'are', 'the', 'regarding'}]
+        if len(meaningful_terms) < 2:  # Adjust this threshold as needed
+            return query  # revert to the original query
+        
+        return filtered_query
+    
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> List[Document]:
         
         # Remove stop words from the query
-        query_words = query.lower().split()
-        filtered_query = " ".join([word for word in query_words if word not in self.stop_words])
+        filtered_query = self.filter_stop_words(query.lower())
         
         # Step 1: Get the initial set of relevant documents
         initial_docs = super()._get_relevant_documents(filtered_query, run_manager=run_manager)
@@ -214,6 +227,8 @@ class CustomSelfQueryRetriever(SelfQueryRetriever):
                     break  # No need to check other headers for this document
         
         return filtered_docs
+    
+    
 
     def header_priority(self, doc):
         headers = doc.metadata  # Assuming headers are stored in metadata
@@ -225,7 +240,6 @@ class CustomSelfQueryRetriever(SelfQueryRetriever):
             return 1
         else:
             return 0
-
 
 
 class BR18_DB:
@@ -305,37 +319,10 @@ class BR18_DB:
         st.session_state.br18_vectorstore = br18_vectorstore
 
         return br18_vectorstore
-    
-
-    def create_retriever(self):
-        metadata_field_info = [
-            AttributeInfo(
-                name="Header 2",
-                description="Header containing the least relevant strings and words relevant to the information of the section",
-                type="string or list[string]",
-            ),
-            AttributeInfo(
-                name="Header 3",
-                description="Header containing relevant strings and words relevant to the information of the section",
-                type="string or list[string]",
-            ),
-            AttributeInfo(
-                name="Header 4",
-                description="Header containing the most relevant strings and words relevant to the information of the section",
-                type="string or list[string]",
-            ),
-        ]
-        document_content_description = "Major sections of the document, organized by hierarchical levels of headers"
-        retriever = SelfQueryRetriever.from_llm(self.llm, self.vectorstore, document_content_description, metadata_field_info, verbose=True, search_kwargs={"k": 5})   
-
-
-        query = "What are the regulations regarding ventilation in residential buildings?"
-        st.write(retriever.get_relevant_documents(query))
-        return retriever
 
     def run(self, query: str):
         retrieval = RetrievalQA.from_chain_type(
-            llm=self.llm, chain_type="map_reduce", retriever=self.retriever, return_source_documents=True, verbose = True
+            llm=self.llm, chain_type="map_reduce", retriever=self.vectorstore, return_source_documents=True, verbose = True
         )
         output = retrieval(query)
         st.session_state.doc_sources = output['source_documents']
