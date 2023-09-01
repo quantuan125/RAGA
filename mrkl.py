@@ -189,18 +189,25 @@ class FilteredVectorStoreRetriever(VectorStoreRetriever):
     # Use the same initializers as the parent class
     search_type: str = "similarity"
     search_kwargs: dict = Field(default_factory=dict)
+    filtered_keywords: set = set()
     
     # Additional member to hold the filtered documents
-    filtered_documents: List[str] = Field(default_factory=list, description="The filtered documents")
-    
-    def set_filtered_documents(self, filtered_documents: List[Document]):
-        self.filtered_documents = set([doc.page_content for doc in filtered_documents])
+
+    def set_filtered_keywords(self, keywords: List[str]):
+        self.filtered_keywords = set(keywords)  # Convert to a set for faster lookup
     
     def get_relevant_documents(self, query: str, **kwargs: Any) -> List[Document]:
+        # Call the parent's method to get the relevant documents
         all_relevant_docs = super().get_relevant_documents(query, **kwargs)
-        filtered_relevant_docs = [doc for doc in all_relevant_docs if doc.page_content in self.filtered_documents]
-        return filtered_relevant_docs
 
+        # Apply the additional filter based on Header 4 metadata
+        filtered_relevant_docs = [
+            doc for doc in all_relevant_docs if any(
+                keyword.lower() in doc.metadata.get('Header 4', '').lower() for keyword in self.filtered_keywords
+            )
+        ]
+
+        return filtered_relevant_docs
 
 class BR18_DB:
     def __init__(self, llm, folder_path: str):
@@ -312,7 +319,7 @@ class BR18_DB:
         st.session_state.br18_vectorstore = filtered_vectorstore
         
         filtered_retriever = FilteredVectorStoreRetriever(vectorstore=filtered_vectorstore)
-        filtered_retriever.set_filtered_documents(filtered_documents)
+        filtered_retriever.set_filtered_keywords(keywords)
         st.write(filtered_retriever)
         # Create a retriever from the existing VectorStore
 
