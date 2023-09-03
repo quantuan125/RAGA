@@ -324,14 +324,14 @@ class BR18_DB:
         all_splits = self.process_all_documents()
         st.write(all_splits)
 
-
+        for i, doc in enumerate(all_splits):
+            doc['metadata']['source'] = str(i)
 
         # Create and save the vector store to disk
         br18_vectorstore = Pinecone.from_documents(documents=all_splits, embedding=self.embeddings, index_name=self.pinecone_index_name)
 
         # Store the vector store in the session state
         st.session_state.br18_vectorstore = br18_vectorstore
-        
 
         return br18_vectorstore
     
@@ -340,31 +340,22 @@ class BR18_DB:
         # Define the prompt template
         prompt_template = """
         The user is searching for specific information within a set of documents about building regulations in Denmark.
-        Your task is to list only the specific keywords from the following user query: "{query}"
+        Please list only the specific keywords from the following user query: "{query}"
 
-         Please adhere to the following guidelines:
-        - Interpret intent and correct typos.
-        - Include both singular and plural forms.
-        - Consider formal hyphenations and compound words.
-        - Exclude common terms like "building", "buildings", "regulations", and "regulation" from the extracted key terms. 
+        Exclude common term like "building", "buildings", "regulations", and "regulation" from the extracted key terms.
 
         Example 1: 
         Query: "What is the building regulation regarding stairs"
-        Answer: "stair, stairs"
+        Answer: "stairs"
 
         Example 2: 
         Query: "How is the law applied to ventilation in residential building?"
         Answer: "ventionlation, residential"
 
         Example 3: 
-        Query: "List the regulatory requirement regarding fire safety"
-        Answer: "fire safety"
-
-        Example 4:
-        Query: "What are the regulations regarding noise in non residential building?"
-        Answer: "noise, non-residential"
+        Query: "List the regulatory requirement regarding fire and safety"
+        Answer: "requirement, fire, safety"
         """
-
         llm_chain = LLMChain(
             llm=self.llm,
             prompt=PromptTemplate.from_template(prompt_template)
@@ -378,63 +369,72 @@ class BR18_DB:
 
     def post_filter_documents(self, keywords: List[str], source_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         filtered_docs = []
-        header_4_matched_docs = []
-        header_3_matched_docs = []
 
         for doc in source_docs:
             headers = doc.metadata
-            st.write(f"Current Document Metadata: {headers}")
-
-            # Check if Header 4 exists
-            header_4_exists = 'Header 4' in headers
-            st.write(f"Does Header 4 Exist?: {header_4_exists}")
-
+            #st.write(f"Metadata for this document: {headers}")
+            
             header_3_content = headers.get('Header 3', "").lower()
             header_4_content = headers.get('Header 4', "").lower()
-
-            st.write(f"Header 3 Content: {header_3_content}")
-            st.write(f"Header 4 Content: {header_4_content}")
+            st.write(f"Header 3 content: {header_3_content}")
+            st.write(f"Header 4 content: {header_4_content}")
 
             header_3_matched_keywords = set()
             header_4_matched_keywords = set()
 
             for keyword in keywords:
-                keyword_lower = keyword.lower()
-                st.write(f"Checking Keyword: {keyword_lower}")
+                st.write(f"Checking keyword: {keyword.lower()}")
 
-                # Check for matches in Header 4 only if it exists
-                if header_4_exists:
-                    if keyword_lower in header_4_content:
-                        st.write("Keyword matches in Header 4.")
-                        header_4_matched_keywords.add(keyword_lower)
+                if keyword.lower() in header_3_content:
+                    st.write(f"Is keyword in Header 3 content?: True")
+                    header_3_matched_keywords.add(keyword.lower())
                 else:
-                    # If Header 4 doesn't exist, check for matches in Header 3
-                    if keyword_lower in header_3_content:
-                        st.write("Keyword matches in Header 3.")
-                        header_3_matched_keywords.add(keyword_lower)
+                    st.write(f"Is keyword in Header 3 content?: False")
 
-            st.write(f"Matched Keywords in Header 3: {header_3_matched_keywords}")
-            st.write(f"Matched Keywords in Header 4: {header_4_matched_keywords}")
+                if keyword.lower() in header_4_content:
+                    st.write(f"Is keyword in Header 4 content?: True")
+                    header_4_matched_keywords.add(keyword.lower())
+                else:
+                    st.write(f"Is keyword in Header 4 content?: False")
+                    
 
-            # Determine whether to add the document to the filtered list
-            if header_4_exists and header_4_matched_keywords:
-                st.write("Document added based on Header 4 matches.")
-                header_4_matched_docs.append(doc)
-            elif not header_4_exists and header_3_matched_keywords:
-                st.write("Document added based on Header 3 matches.")
-                header_3_matched_docs.append(doc)
+            st.write(f"Matched keywords in Header 3: {header_3_matched_keywords}")
+            st.write(f"Matched keywords in Header 4: {header_4_matched_keywords}")
 
-            filtered_docs = header_4_matched_docs + header_3_matched_docs
+            if header_3_matched_keywords and header_4_matched_keywords:
+                filtered_docs.append(doc)
 
         return filtered_docs
 
 
     def create_retriever(self):
-        retriever = self.vectorstore.as_retriever(
-        search_kwargs={'k': 20}
-        )
+        metadata_field_info = [
+            AttributeInfo(
+                name="Header 2",
+                description="Header containing the least relevant strings and words relevant to the information of the section",
+                type="string or list[string]",
+            ),
+            AttributeInfo(
+                name="Header 3",
+                description="Header containing relevant strings and words relevant to the information of the section",
+                type="string or list[string]",
+            ),
+            AttributeInfo(
+                name="Header 4",
+                description="Header containing the most relevant strings and words relevant to the information of the section",
+                type="string or list[string]",
+            ),
+        ]
+        document_content_description = "Major sections of the document, organized by hierarchical levels of headers"
+        retriever = CustomSelfQueryRetriever.from_llm(self.llm, 
+        self.vectorstore, 
+        document_content_description,  
+        metadata_field_info, 
+        verbose=True, 
+        search_kwargs={"k": 20},
+        )   
 
-        query = ""
+        query = "What are the regulations regarding stairs?"
         initial_relevant_docs = retriever.get_relevant_documents(query)
         st.write(initial_relevant_docs)
         #st.write(type(initial_relevant_docs))
@@ -662,7 +662,7 @@ class MRKL:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo-16k"
+            model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = DuckDuckGoSearchRun()
@@ -723,7 +723,7 @@ class MRKL:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo"
+            model_name="gpt-3.5-turbo-16k"
             )
 
         PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, a leading engineering company in construction and infrastructure. Your expertise lies in the construction industry, legal frameworks, and regulatory matters. Your primary role is to furnish detailed, structured, and high-quality answers grounded in authoritative sources.
@@ -881,8 +881,6 @@ def main():
         st.session_state.summary = None
     if "doc_sources" not in st.session_state:
         st.session_state.doc_sources = []
-    if "br18_vectorstore" not in st.session_state:
-        st.session_state.br18_vectorstore = None
     if "history" not in st.session_state:
         st.session_state.history = []
     if 'br18_exp' not in st.session_state:
