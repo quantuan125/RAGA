@@ -44,6 +44,7 @@ from typing import List, Dict, Any
 from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from langchain.prompts.prompt import PromptTemplate
 from langchain.chains.question_answering import map_reduce_prompt, stuff_prompt
+from langchain.agents.agent_toolkits import create_conversational_retrieval_agent
 
 
 langchain.verbose = True
@@ -758,37 +759,6 @@ class MRKL:
                 self.memory.save_context({"input": user_msg["content"]}, {"output": assistant_msg["content"]})  # Update memory with assistant's response
         return self.memory
     
-    def get_keywords(self, llm_response):
-        conversation = llm_response["chat_history"]
-        keyword_list = []
-
-        search_keywords_extract_function = {
-            "name": "search_keywords_extractor",
-            "description": "Creates a list of 5 short academic Google searchable keywords from the given conversation.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "keywords": {
-                        "type": "string",
-                        "description": "List of 5 short academic Google searchable keywords"
-                    }
-                },
-                "required": ["keywords"]
-            }
-        }
-
-        res = openai.ChatCompletion.create(
-            model='gpt-3.5-turbo-0613',
-            messages=[{"role": "user", "content": conversation}],
-            functions=[search_keywords_extract_function]
-        )
-
-        if "function_call" in res['choices'][0]['message']:
-            args = json.loads(res['choices'][0]['message']['function_call']['arguments'])
-            keyword_list = list(args['keywords'].split(","))
-
-        return keyword_list
-
     def clear_conversation(self):
         self.memory.clear()
 
