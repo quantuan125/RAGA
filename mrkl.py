@@ -203,7 +203,7 @@ class BR18_DB:
             self.vectorstore = self.create_vectorstore()
         else:
             self.vectorstore = Pinecone.from_existing_index(self.pinecone_index_name, self.embeddings)
-        self.retriever = self.create_retriever()
+        self.retriever = None
 
 
     def load_documents(self):
@@ -282,14 +282,17 @@ class BR18_DB:
     def get_keywords(self, query: str) -> list:
         # Define the prompt template
         prompt_template = """
-        The user is searching for specific information within a set of documents about building regulations in Denmark.
-        Your task is to list only the specific keywords from the following user query: "{query}"
+        The user is searching for specific information within a set of documents about building regulation.
+        Your task is to list only the specific keywords from the following user query: {query}
 
-         Please adhere to the following guidelines:
+        Please adhere to the following guidelines: 
         - Interpret intent and correct typos.
         - Include both singular and plural forms.
         - Consider formal hyphenations and compound words.
-        - Exclude common terms like "building", "buildings", "regulations", and "regulation" from the extracted key terms. 
+        Exclude the following common terms and their variations or synonyms especially for these words: 
+        - "building", "buildings", "construction", "constructions"
+        - "regulation", "regulations", "requirement", "regulatory", "requirements"
+
 
         Example 1: 
         Query: "What is the building regulation regarding stairs"
@@ -326,45 +329,45 @@ class BR18_DB:
 
         for doc in source_docs:
             headers = doc.metadata
-            st.write(f"Current Document Metadata: {headers}")
+            #st.write(f"Current Document Metadata: {headers}")
 
             # Check if Header 4 exists
             header_4_exists = 'Header 4' in headers
-            st.write(f"Does Header 4 Exist?: {header_4_exists}")
+            #st.write(f"Does Header 4 Exist?: {header_4_exists}")
 
             header_3_content = headers.get('Header 3', "").lower()
             header_4_content = headers.get('Header 4', "").lower()
 
-            st.write(f"Header 3 Content: {header_3_content}")
-            st.write(f"Header 4 Content: {header_4_content}")
+            #st.write(f"Header 3 Content: {header_3_content}")
+            #st.write(f"Header 4 Content: {header_4_content}")
 
             header_3_matched_keywords = set()
             header_4_matched_keywords = set()
 
             for keyword in keywords:
                 keyword_lower = keyword.lower()
-                st.write(f"Checking Keyword: {keyword_lower}")
+                #st.write(f"Checking Keyword: {keyword_lower}")
 
                 # Check for matches in Header 4 only if it exists
                 if header_4_exists:
                     if keyword_lower in header_4_content:
-                        st.write("Keyword matches in Header 4.")
+                        #st.write("Keyword matches in Header 4.")
                         header_4_matched_keywords.add(keyword_lower)
                 else:
                     # If Header 4 doesn't exist, check for matches in Header 3
                     if keyword_lower in header_3_content:
-                        st.write("Keyword matches in Header 3.")
+                        #st.write("Keyword matches in Header 3.")
                         header_3_matched_keywords.add(keyword_lower)
 
-            st.write(f"Matched Keywords in Header 3: {header_3_matched_keywords}")
-            st.write(f"Matched Keywords in Header 4: {header_4_matched_keywords}")
+            #st.write(f"Matched Keywords in Header 3: {header_3_matched_keywords}")
+            #st.write(f"Matched Keywords in Header 4: {header_4_matched_keywords}")
 
             # Determine whether to add the document to the filtered list
             if header_4_exists and header_4_matched_keywords:
-                st.write("Document added based on Header 4 matches.")
+                #st.write("Document added based on Header 4 matches.")
                 header_4_matched_docs.append(doc)
             elif not header_4_exists and header_3_matched_keywords:
-                st.write("Document added based on Header 3 matches.")
+                #st.write("Document added based on Header 3 matches.")
                 header_3_matched_docs.append(doc)
 
             filtered_docs = header_4_matched_docs + header_3_matched_docs
@@ -372,12 +375,11 @@ class BR18_DB:
         return filtered_docs
 
 
-    def create_retriever(self):
+    def create_retriever(self, query: str):
         retriever = self.vectorstore.as_retriever(
         search_kwargs={'k': 20}
         )
 
-        query = "What is the building regulation regarding daylights"
         initial_relevant_docs = retriever.get_relevant_documents(query)
         st.write(initial_relevant_docs)
         #st.write(type(initial_relevant_docs))
@@ -410,7 +412,7 @@ class BR18_DB:
         )
 
         # Retrieve the filtered documents
-        filtered_docs = self.create_retriever()
+        filtered_docs = self.create_retriever(query)
         #st.write(type(filtered_docs[0]))
         st.write(filtered_docs)
 
@@ -605,7 +607,7 @@ class MRKL:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo-16k"
+            model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = DuckDuckGoSearchRun()
@@ -666,7 +668,7 @@ class MRKL:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo"
+            model_name="gpt-3.5-turbo-16k"
             )
 
         PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, a leading engineering company in construction and infrastructure. Your expertise lies in the construction industry, legal frameworks, and regulatory matters. Your primary role is to furnish detailed, structured, and high-quality answers grounded in authoritative sources.
@@ -690,7 +692,7 @@ class MRKL:
 
         ... (this Thought/Action/Action Input/Observation can repeat N times)
 
-        Thought: I now know the final answer based on my observation
+        Thought: I have found sufficient information to provide a final answer
         Final Answer: Your detailed and structured final answer to the original question. Ensure that the answer adheres to the response objectives:
                     1. Provides an overview of the topic.
                     2. Lists key points or clauses in a bullet-point or numbered list format.
