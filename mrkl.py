@@ -50,6 +50,8 @@ from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
 from langchain.schema.messages import SystemMessage
 from langchain.prompts import MessagesPlaceholder
 from langchain.agents import AgentExecutor
+from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from langchain.schema import HumanMessage, SystemMessage
 
 langchain.verbose = True
 
@@ -789,7 +791,8 @@ class MRKL_Chat:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo"
+            model_name="gpt-3.5-turbo",
+            verbose=True
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = SerpAPIWrapper()
@@ -841,18 +844,23 @@ class MRKL_Chat:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo"
+            model_name="gpt-3.5-turbo",
+            verbose=True
             )
         # Memory
         memory_key = "history"
         memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output")
 
         # System Message
-        system_message = SystemMessage(
-            content=("Do your best to answer the questions. "
-                    "Feel free to use any tools available to look up "
-                    "relevant information, only if necessary")
-        )
+
+        system_message_content = """
+        You are MRKL, an expert in dealing with construction, legal frameworks, and regulatory matters.
+
+        As a chatbot for a leading world engineering firm COWI, you have access to the following tools to look up relevant information, but only if necessary:
+
+        """
+        system_message = SystemMessage(content=system_message_content)
+
 
         # Prompt
         prompt = OpenAIFunctionsAgent.create_prompt(
