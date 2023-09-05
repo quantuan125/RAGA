@@ -45,11 +45,7 @@ from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_
 from langchain.prompts.prompt import PromptTemplate
 from langchain.chains.question_answering import map_reduce_prompt, stuff_prompt
 from langchain.agents.agent_toolkits import create_conversational_retrieval_agent
-from langchain.agents.openai_functions_agent.agent_token_buffer_memory import AgentTokenBufferMemory
-from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
-from langchain.schema.messages import SystemMessage
-from langchain.prompts import MessagesPlaceholder
-from langchain.agents import AgentExecutor
+
 
 langchain.verbose = True
 
@@ -64,7 +60,6 @@ def reset_chat():
     st.session_state.history = None
     st.session_state.summary = None
     st.session_state.agent.clear_conversation()
-    st.session_state.vector_store = None
 
 def display_messages(messages):
     # Display all messages
@@ -271,7 +266,7 @@ class BR18_DB:
     def create_vectorstore(self):
         # Use the process_all_documents method to get all the processed splits
         all_splits = self.process_all_documents()
-        #st.write(all_splits)
+        st.write(all_splits)
 
 
 
@@ -387,20 +382,20 @@ class BR18_DB:
         )
 
         initial_relevant_docs = retriever.get_relevant_documents(query)
-        #st.write(initial_relevant_docs)
+        st.write(initial_relevant_docs)
         #st.write(type(initial_relevant_docs))
 
         keywords = self.get_keywords(query)
-        #st.write(keywords)
+        st.write(keywords)
 
 
         filtered_docs = self.post_filter_documents(keywords, initial_relevant_docs)
-        #st.write(filtered_docs)
+        st.write(filtered_docs)
         #st.write(type(filtered_docs[0]))
 
         if not filtered_docs:
             non_filtered = initial_relevant_docs[:3]
-            #st.write(non_filtered)
+            st.write(non_filtered)
             return non_filtered
 
         return filtered_docs
@@ -420,7 +415,7 @@ class BR18_DB:
         # Retrieve the filtered documents
         filtered_docs = self.create_retriever(query)
         #st.write(type(filtered_docs[0]))
-        #st.write(filtered_docs)
+        st.write(filtered_docs)
 
         qa_chain = load_qa_chain(self.llm, chain_type="stuff", verbose=True, prompt=PROMPT)
         output = qa_chain({"input_documents": filtered_docs, "question": query}, return_only_outputs=True)
@@ -616,7 +611,7 @@ class MRKL:
             model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
-        llm_search = SerpAPIWrapper()
+        llm_search = DuckDuckGoSearchRun()
 
         current_directory = os.getcwd()
 
@@ -779,107 +774,6 @@ class MRKL:
         response = self.agent.run(input=input, callbacks=callbacks)
         return response
 
-class MRKL_Chat:
-    def __init__(self):
-        self.tools = self.load_tools()
-        self.agent_executor, self.memory = self.load_agent()
-
-    def load_tools(self):
-        # Load tools
-        llm = ChatOpenAI(
-            temperature=0, 
-            streaming=True,
-            model_name="gpt-3.5-turbo"
-            )
-        llm_math = LLMMathChain(llm=llm)
-        llm_search = SerpAPIWrapper()
-
-        current_directory = os.getcwd()
-
-        tools = [
-            Tool(
-                name="Search",
-                func=llm_search.run,
-                description="Useful when you cannot find a clear answer by looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
-            ),
-            Tool(
-                name='Calculator',
-                func=llm_math.run,
-                description='Useful for when you need to answer questions about math.'
-            ),
-        ]
-
-        if st.session_state.vector_store is not None:
-            metadata = st.session_state.document_metadata
-            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
-
-            #st.write(llm_database.get_description())
-
-            tools.append(
-                Tool(
-                    name='Document_Database',
-                    func=llm_database.run,
-                    description=llm_database.get_description(),
-                ),
-            )
-
-        if st.session_state.br18_exp is True:
-            br18_folder_path = os.path.join(current_directory, "BR18_DB")
-            llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)
-
-            tools.append(
-                Tool(
-                    name='BR18_Database',
-                    func=llm_br18.run,
-                    description="Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
-                )
-            )
-        return tools
-
-    
-    def load_agent(self):
-        llm = ChatOpenAI(
-            temperature=0, 
-            streaming=True,
-            model_name="gpt-3.5-turbo"
-            )
-        # Memory
-        memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output")
-
-        # System Message
-        system_message = SystemMessage(
-            content=("Do your best to answer the questions. "
-                    "Feel free to use any tools available to look up "
-                    "relevant information, only if necessary")
-        )
-
-        # Prompt
-        prompt = OpenAIFunctionsAgent.create_prompt(
-            system_message=system_message,
-            extra_prompt_messages=[MessagesPlaceholder(variable_name=memory_key)]
-        )
-        
-        # Agent
-        agent = OpenAIFunctionsAgent(llm=llm, tools=self.tools, prompt=prompt)
-        
-        # Agent Executor
-        agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=self.tools, memory=memory, verbose=True,
-                                    return_intermediate_steps=True)
-        
-        return agent_executor, memory
-
-    def clear_conversation(self):
-        self.memory.clear()
-
-    def run_agent(self, input, callbacks=[]):
-        # Define the logic for processing the user's input
-        # For now, let's just use the agent's run method
-        result = self.agent_executor({"input": input}, callbacks=callbacks)
-        response = result.get('output')  
-        intermediate_steps = result.get('intermediate_steps', [])
-        return response
-    
 
 def main():
     load_dotenv()
@@ -916,7 +810,7 @@ def main():
     if 'show_info' not in st.session_state:
         st.session_state.show_info = False
 
-    with st.expander("Configuration", expanded = False):
+    with st.expander("Configuration", expanded = True):
         openai_api_key = st.text_input("Enter OpenAI API Key", value="", placeholder="Enter the OpenAI API key which begins with sk-", type="password")
         if openai_api_key:
             st.session_state.openai = openai_api_key
@@ -928,19 +822,13 @@ def main():
         chat_experiment = st.checkbox("Experimental Feature: Enable Memory", value=False)
         if chat_experiment != st.session_state.chat_exp:
             st.session_state.chat_exp = chat_experiment
-            if st.session_state.chat_exp:
-                st.session_state.agent = MRKL_Chat()
-            else:
-                st.session_state.agent = MRKL()
+            st.session_state.agent = MRKL()
             reset_chat()
 
         br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
         if br18_experiment != st.session_state.br18_exp:
             st.session_state.br18_exp = br18_experiment
-            if st.session_state.chat_exp:
-                st.session_state.agent = MRKL_Chat()
-            else:
-                st.session_state.agent = MRKL()
+            st.session_state.agent = MRKL()
 
         st.sidebar.title("Upload Local Vector DB")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
@@ -985,10 +873,7 @@ def main():
 
                             vector_store = db_store.get_vectorstore()
                             st.session_state.vector_store = vector_store
-                            if st.session_state.chat_exp is False:
-                                st.session_state.agent = MRKL()
-                            if st.session_state.chat_exp is True:
-                                st.session_state.agent = MRKL_Chat()
+                            st.session_state.agent = MRKL()
                             #st.write(st.session_state.document_metadata)
                             st.success("PDF uploaded successfully!")
 
@@ -1019,9 +904,8 @@ def main():
 
             current_assistant_response = {"output": response}
 
-        current_messages = [current_user_message, current_assistant_response] 
-        if st.session_state.chat_exp is False:    
-            st.session_state.history = st.session_state.agent.load_memory(current_messages)
+        current_messages = [current_user_message, current_assistant_response]    
+        st.session_state.history = st.session_state.agent.load_memory(current_messages)
 
 
 
@@ -1057,7 +941,6 @@ def main():
     #st.write(st.session_state.vector_store)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
-    st.write(st.session_state.agent)
 
 
 
