@@ -50,8 +50,11 @@ from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
 from langchain.schema.messages import SystemMessage
 from langchain.prompts import MessagesPlaceholder
 from langchain.agents import AgentExecutor
+from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
+from langchain.schema import HumanMessage, SystemMessage
 
 langchain.verbose = True
+langchain.debug = True
 
 def on_selectbox_change():
     st.session_state.show_info = True
@@ -210,7 +213,6 @@ class BR18_DB:
             self.vectorstore = Pinecone.from_existing_index(self.pinecone_index_name, self.embeddings)
         self.retriever = None
 
-
     def load_documents(self):
         md_paths = list(Path(self.folder_path).rglob("*.md"))
         documents = []
@@ -283,7 +285,6 @@ class BR18_DB:
 
         return br18_vectorstore
     
-
     def get_keywords(self, query: str) -> list:
         # Define the prompt template
         prompt_template = """
@@ -379,7 +380,6 @@ class BR18_DB:
 
         return filtered_docs
 
-
     def create_retriever(self, query: str):
         retriever = self.vectorstore.as_retriever(
         search_kwargs={'k': 20}
@@ -404,9 +404,11 @@ class BR18_DB:
 
         return filtered_docs
     
-
     def run(self, query: str):
-        prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+        prompt_template = """Use the following pieces of context to answer the question at the end. 
+        The answer should be as specific as possible and reference clause numbers if applicable. 
+        Make sure to mention requirement numbers and specific integer values where relevant.
+        If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
         {context}
 
@@ -606,7 +608,6 @@ class MRKL:
         self.tools = self.load_tools()
         self.agent, self.memory = self.load_agent()
         
-
     def load_tools(self):
         # Load tools
         llm = ChatOpenAI(
@@ -667,7 +668,6 @@ class MRKL:
                 )
             )
         return tools
-
 
     def load_agent(self):
         llm = ChatOpenAI(
@@ -841,16 +841,30 @@ class MRKL_Chat:
             streaming=True,
             model_name="gpt-3.5-turbo"
             )
+        
         # Memory
         memory_key = "history"
         memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output")
+        st.session_state.history = memory
+
+        system_message_content = """
+        You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
+        
+        You are designed to be an AI Chatbot for the engineering firm COWI, and you have the following tools to answer user queries, but only use them if necessary.
+
+        Unless otherwise explicitly stated, the user queries are about the context given.
+
+        Your primary objective is to provide responses that:
+        1. Offer an overview of the topic.
+        2. List key points or clauses in a bullet-point or numbered list format.
+        3. Reflect back to the user's question and give a concise conclusion.
+        Maintain a professional and helpful demeanor in all interactions.
+        """
+    
+
 
         # System Message
-        system_message = SystemMessage(
-            content=("Do your best to answer the questions. "
-                    "Feel free to use any tools available to look up "
-                    "relevant information, only if necessary")
-        )
+        system_message = SystemMessage(content=system_message_content)
 
         # Prompt
         prompt = OpenAIFunctionsAgent.create_prompt(
@@ -875,7 +889,7 @@ class MRKL_Chat:
         result = self.agent_executor({"input": input}, callbacks=callbacks)
         response = result.get('output')  
         intermediate_steps = result.get('intermediate_steps', [])
-        return response
+        return result
     
 
 def main():
@@ -939,7 +953,7 @@ def main():
             else:
                 st.session_state.agent = MRKL()
 
-        st.sidebar.title("Upload Local Vector DB")
+        st.sidebar.title("Upload Document to Database")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
         if uploaded_files:
             file_details = {"FileName": [], "FileType": [], "FileSize": []}
@@ -1010,7 +1024,9 @@ def main():
 
         with st.chat_message("assistant"):
             st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=False)
-            response = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+            result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+            st.session_state.result = result
+            response = result.get('output', '')
             st.session_state.messages.append({"roles": "assistant", "content": response})
             st.write(response)
 
@@ -1049,13 +1065,13 @@ def main():
         #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
         st.button("Clear Chat", key="clear", on_click=reset_chat)
 
-    st.write(st.session_state.history)
+    #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
     #st.write(st.session_state.vector_store)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
     st.write(st.session_state.agent)
-
+    st.write(st.session_state.result)
 
 
 if __name__== '__main__':
