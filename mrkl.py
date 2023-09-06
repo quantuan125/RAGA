@@ -47,8 +47,9 @@ from langchain.chains.question_answering import map_reduce_prompt, stuff_prompt
 from langchain.agents.agent_toolkits import create_conversational_retrieval_agent
 from langchain.agents.openai_functions_agent.agent_token_buffer_memory import AgentTokenBufferMemory
 from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
-from langchain.agents.openai_functions_multi_agent.base import OpenAIMultiFunctionsAgent
-
+from langchain.schema.messages import SystemMessage
+from langchain.prompts import MessagesPlaceholder
+from langchain.agents import AgentExecutor
 
 langchain.verbose = True
 
@@ -63,6 +64,7 @@ def reset_chat():
     st.session_state.history = None
     st.session_state.summary = None
     st.session_state.agent.clear_conversation()
+    st.session_state.vector_store = None
 
 def display_messages(messages):
     # Display all messages
@@ -268,7 +270,7 @@ class BR18_DB:
     def create_vectorstore(self):
         # Use the process_all_documents method to get all the processed splits
         all_splits = self.process_all_documents()
-        st.write(all_splits)
+        #st.write(all_splits)
 
 
 
@@ -384,20 +386,20 @@ class BR18_DB:
         )
 
         initial_relevant_docs = retriever.get_relevant_documents(query)
-        st.write(initial_relevant_docs)
+        #st.write(initial_relevant_docs)
         #st.write(type(initial_relevant_docs))
 
         keywords = self.get_keywords(query)
-        st.write(keywords)
+        #st.write(keywords)
 
 
         filtered_docs = self.post_filter_documents(keywords, initial_relevant_docs)
-        st.write(filtered_docs)
+        #st.write(filtered_docs)
         #st.write(type(filtered_docs[0]))
 
         if not filtered_docs:
             non_filtered = initial_relevant_docs[:3]
-            st.write(non_filtered)
+            #st.write(non_filtered)
             return non_filtered
 
         return filtered_docs
@@ -417,7 +419,7 @@ class BR18_DB:
         # Retrieve the filtered documents
         filtered_docs = self.create_retriever(query)
         #st.write(type(filtered_docs[0]))
-        st.write(filtered_docs)
+        #st.write(filtered_docs)
 
         qa_chain = load_qa_chain(self.llm, chain_type="stuff", verbose=True, prompt=PROMPT)
         output = qa_chain({"input_documents": filtered_docs, "question": query}, return_only_outputs=True)
@@ -613,7 +615,7 @@ class MRKL:
             model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
-        llm_search = DuckDuckGoSearchRun()
+        llm_search = SerpAPIWrapper()
 
         current_directory = os.getcwd()
 
@@ -786,8 +788,7 @@ class MRKL_Chat:
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo",
-            verbose=True
+            model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
         llm_search = SerpAPIWrapper()
@@ -834,28 +835,22 @@ class MRKL_Chat:
             )
         return tools
 
-    
     def load_agent(self):
         llm = ChatOpenAI(
             temperature=0, 
             streaming=True,
-            model_name="gpt-3.5-turbo",
-            verbose=True
+            model_name="gpt-3.5-turbo"
             )
         # Memory
         memory_key = "history"
         memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output")
 
         # System Message
-
-        system_message_content = """
-        You are MRKL, an expert in dealing with construction, legal frameworks, and regulatory matters.
-
-        As a chatbot for a leading world engineering firm COWI, you have access to the following tools to look up relevant information, but only if necessary:
-
-        """
-        system_message = SystemMessage(content=system_message_content)
-
+        system_message = SystemMessage(
+            content=("Do your best to answer the questions. "
+                    "Feel free to use any tools available to look up "
+                    "relevant information, only if necessary")
+        )
 
         # Prompt
         prompt = OpenAIFunctionsAgent.create_prompt(
@@ -867,8 +862,7 @@ class MRKL_Chat:
         agent = OpenAIFunctionsAgent(llm=llm, tools=self.tools, prompt=prompt)
         
         # Agent Executor
-        agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=self.tools, memory=memory, verbose=True,
-                                    return_intermediate_steps=True)
+        agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=self.tools, memory=memory, verbose=True, return_intermediate_steps=True)
         
         return agent_executor, memory
 
@@ -919,7 +913,7 @@ def main():
     if 'show_info' not in st.session_state:
         st.session_state.show_info = False
 
-    with st.expander("Configuration", expanded = True):
+    with st.expander("Configuration", expanded = False):
         openai_api_key = st.text_input("Enter OpenAI API Key", value="", placeholder="Enter the OpenAI API key which begins with sk-", type="password")
         if openai_api_key:
             st.session_state.openai = openai_api_key
@@ -931,13 +925,19 @@ def main():
         chat_experiment = st.checkbox("Experimental Feature: Enable Memory", value=False)
         if chat_experiment != st.session_state.chat_exp:
             st.session_state.chat_exp = chat_experiment
-            st.session_state.agent = MRKL()
+            if st.session_state.chat_exp:
+                st.session_state.agent = MRKL_Chat()
+            else:
+                st.session_state.agent = MRKL()
             reset_chat()
 
         br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
         if br18_experiment != st.session_state.br18_exp:
             st.session_state.br18_exp = br18_experiment
-            st.session_state.agent = MRKL()
+            if st.session_state.chat_exp:
+                st.session_state.agent = MRKL_Chat()
+            else:
+                st.session_state.agent = MRKL()
 
         st.sidebar.title("Upload Local Vector DB")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
@@ -982,11 +982,8 @@ def main():
 
                             vector_store = db_store.get_vectorstore()
                             st.session_state.vector_store = vector_store
+                            if st.session_state.chat_exp is False:
                                 st.session_state.agent = MRKL()
-                                st.session_state.agent = MRKL()
-                            if st.session_state.chat_exp is True:
-                                st.session_state.agent = MRKL_Chat()
-                            st.session_state.agent = MRKL()
                             if st.session_state.chat_exp is True:
                                 st.session_state.agent = MRKL_Chat()
                             #st.write(st.session_state.document_metadata)
@@ -1020,11 +1017,8 @@ def main():
             current_assistant_response = {"output": response}
 
         current_messages = [current_user_message, current_assistant_response] 
-        current_messages = [current_user_message, current_assistant_response] 
         if st.session_state.chat_exp is False:    
-        current_messages = [current_user_message, current_assistant_response]    
-        if st.session_state.chat_exp is False:    
-        st.session_state.history = st.session_state.agent.load_memory(current_messages)
+            st.session_state.history = st.session_state.agent.load_memory(current_messages)
 
 
 
@@ -1060,6 +1054,7 @@ def main():
     #st.write(st.session_state.vector_store)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
+    st.write(st.session_state.agent)
 
 
 
