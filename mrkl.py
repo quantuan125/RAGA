@@ -887,8 +887,6 @@ class MRKL_Chat:
         # Define the logic for processing the user's input
         # For now, let's just use the agent's run method
         result = self.agent_executor({"input": input}, callbacks=callbacks)
-        response = result.get('output')  
-        intermediate_steps = result.get('intermediate_steps', [])
         return result
     
 
