@@ -54,6 +54,7 @@ from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain.schema import HumanMessage, SystemMessage
 
 langchain.verbose = True
+langchain.debug = True
 
 def on_selectbox_change():
     st.session_state.show_info = True
@@ -405,7 +406,7 @@ class BR18_DB:
     
     def run(self, query: str):
         prompt_template = """Use the following pieces of context to answer the question at the end. 
-        The answer should be as specific as possible and reference clause numbers and their respective subclause if applicable. 
+        The answer should be as specific as possible and reference clause numbers if applicable. 
         Make sure to mention requirement numbers and specific integer values where relevant.
         If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
@@ -843,7 +844,7 @@ class MRKL_Chat:
         
         # Memory
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output", max_token_limit=4000)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output")
         st.session_state.history = memory
 
         system_message_content = """
@@ -857,9 +858,10 @@ class MRKL_Chat:
         1. Offer an overview of the topic.
         2. List key points or clauses in a bullet-point or numbered list format.
         3. Reflect back to the user's question and give a concise conclusion.
-        
-        You must maintain a professional and helpful demeanor in all interactions.
+        Maintain a professional and helpful demeanor in all interactions.
         """
+    
+
 
         # System Message
         system_message = SystemMessage(content=system_message_content)
@@ -1006,8 +1008,6 @@ def main():
                                 st.session_state.summary = summarization_tool.run()
                                 # Append the summary to the chat messages
                                 st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
-        else:
-                st.session_state.vector_store = None
 
 
     display_messages(st.session_state.messages)
@@ -1065,11 +1065,11 @@ def main():
 
     #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
-    st.write(st.session_state.vector_store)
+    #st.write(st.session_state.vector_store)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
     st.write(st.session_state.agent)
-    #st.write(st.session_state.result)
+    st.write(st.session_state.result)
 
 
 if __name__== '__main__':
