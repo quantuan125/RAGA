@@ -178,11 +178,9 @@ c) Energy consumption for temporary, movable pavilions in ss. 287-292.
 requirements in Part II:
 a) Building rights in Chapter 8. The provisions of Chapter 8 only apply to transportable tents and
 structures which are erected for a period exceeding 6 weeks.
-b) Access conditions at the building in ss. 52-
-
-55. c) Protection in ss. 59-61.
-d) Structures in Chapter 15. Tents with a total area of maximum 50 sq. metres are not subject to the
-    rules in Chapter15.
+b) Access conditions at the building in ss. 52-55. 
+c) Protection in ss. 59-61.
+d) Structures in Chapter 15. Tents with a total area of maximum 50 sq. metres are not subject to the rules in Chapter15.
 e) Fire safety in Chapter 5.
 
 #### Application for building permit

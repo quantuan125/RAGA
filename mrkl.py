@@ -398,7 +398,7 @@ class BR18_DB:
         #st.write(type(filtered_docs[0]))
 
         if not filtered_docs:
-            non_filtered = initial_relevant_docs[:3]
+            non_filtered = initial_relevant_docs[:5]
             #st.write(non_filtered)
             return non_filtered
 
