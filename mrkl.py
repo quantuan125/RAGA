@@ -53,6 +53,7 @@ from langchain.agents import AgentExecutor
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain.schema import HumanMessage, SystemMessage
 
+langchain.debug = True
 langchain.verbose = True
 
 def on_selectbox_change():
@@ -405,7 +406,7 @@ class BR18_DB:
     
     def run(self, query: str):
         prompt_template = """Use the following pieces of context to answer the question at the end. 
-        The answer should be as specific as possible and reference clause numbers and their respective subclause if applicable. 
+        The answer should be as specific as possible and reference clause numbers and their respective subclause. 
         Make sure to mention requirement numbers and specific integer values where relevant.
         If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
@@ -605,181 +606,6 @@ class SummarizationTool():
 class MRKL:
     def __init__(self):
         self.tools = self.load_tools()
-        self.agent, self.memory = self.load_agent()
-        
-    def load_tools(self):
-        # Load tools
-        llm = ChatOpenAI(
-            temperature=0, 
-            streaming=True,
-            model_name="gpt-3.5-turbo"
-            )
-        llm_math = LLMMathChain(llm=llm)
-        llm_search = SerpAPIWrapper()
-
-        current_directory = os.getcwd()
-
-        usc_folder_path = os.path.join(current_directory, "USC_DB")
-        usc_db = USC_DB(llm=llm, folder_path=usc_folder_path)  # Replace with your folder path
-
-        tools = [
-            Tool(
-                name="Search",
-                func=llm_search.run,
-                description="Useful when you cannot find a clear answer by looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
-            ),
-            Tool(
-                name='Calculator',
-                func=llm_math.run,
-                description='Useful for when you need to answer questions about math.'
-            ),
-            Tool(
-                name='USC Database',
-                func=usc_db.run,
-                description="Always useful for when you need to answer questions about the United State Constitution and The Bills of Rights. Input should be a fully formed question. Use this tool more often than the normal search tool"
-            ),
-        ]
-
-        # Only add the DatabaseTool if vector_store exists
-        if st.session_state.vector_store is not None:
-            metadata = st.session_state.document_metadata
-            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
-
-            #st.write(llm_database.get_description())
-
-            tools.append(
-                Tool(
-                    name='Document Database',
-                    func=llm_database.run,
-                    description=llm_database.get_description(),
-                ),
-            )
-        
-        if st.session_state.br18_exp is True:
-            br18_folder_path = os.path.join(current_directory, "BR18_DB")
-            llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)
-
-            tools.append(
-                Tool(
-                    name='BR18 Database',
-                    func=llm_br18.run,
-                    description="Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
-                )
-            )
-        return tools
-
-    def load_agent(self):
-        llm = ChatOpenAI(
-            temperature=0, 
-            streaming=True,
-            model_name="gpt-3.5-turbo-16k"
-            )
-
-        PREFIX ="""You are MRKL, designed to serve as a specialized chatbot for COWI, a leading engineering company in construction and infrastructure. Your expertise lies in the construction industry, legal frameworks, and regulatory matters. Your primary role is to furnish detailed, structured, and high-quality answers grounded in authoritative sources.
-
-        Remember you have the following special Skills: You can interpret Roman numerals, distill complex documents into summaries, and provide nuanced answers by correlating different sources.
-
-        Decision Guidelines: Always use your databases as primary sources, resort to general internet searches when you cannot find sufficient information, and offer direct Final Answers in an assistive and helpful manner when no tools are required
-
-        Response Objectives: Your answers should always be comprehensive, well-organized, and of equal or better quality than the sources you consult.
-
-        You have access to the following tools:"""
-
-        FORMAT_INSTRUCTIONS = """
-        Use the following format:
-        '''
-        Question: the input question you must answer
-        Thought: you should always think about what to do
-        Action: the action to take, should be one of [{tool_names}] 
-        Action Input: the input to the action, if no tool is needed then gives Thought as the Final Answer
-        Observation: the result of the action 
-
-        ... (this Thought/Action/Action Input/Observation can repeat N times)
-
-        Thought: I have found sufficient information to provide a final answer
-        Final Answer: Your detailed and structured final answer to the original question. Ensure that the answer adheres to the response objectives:
-                    1. Provides an overview of the topic.
-                    2. Lists key points or clauses in a bullet-point or numbered list format.
-                    3. Reflect back to the user question and gives a concise conclusion 
-        '''
-        """
-
-        SUFFIX = """Begin!  Maintain a professional and helpful demeanor in all interactions while uphold a high quality standard in your responses.
-        Previous conversation history:
-        {chat_history}
-        Question: {input}
-        {agent_scratchpad}"""
-        
-
-        prompt = ZeroShotAgent.create_prompt(
-            self.tools, 
-            prefix=PREFIX,
-            suffix=SUFFIX,
-            format_instructions=FORMAT_INSTRUCTIONS,
-            input_variables=["input", "chat_history", "agent_scratchpad"])
-        
-        def _handle_error(error) -> str:
-            """If you encounter a parsing error:
-            1. Review the tool's output and ensure you've extracted the necessary information.
-            2. Ensure you're using the correct format for the next step.
-            3. If you're unsure about the next step, refer back to the format instructions.
-            4. If all else fails, restart the process and try again."""
-            return str(error)[:50]
-
-        if st.session_state.chat_exp is True:
-            k = 10
-        else:
-            k = 0
-
-        memory = ConversationBufferWindowMemory(memory_key="chat_history", k=k)
-
-        llm_chain = LLMChain(llm=llm, prompt=prompt)
-        agent = ZeroShotAgent(
-            llm_chain=llm_chain,
-            tools=self.tools,
-            llm=llm,
-            handle_parsing_errors=True,
-            max_iterations=5,
-        )
-
-        executive_agent = AgentExecutor.from_agent_and_tools(
-        agent=agent,
-        tools=self.tools,
-        verbose=True,
-        handle_parsing_errors=True,
-        memory=memory,
-        max_iterations=5,
-        )
-
-        return executive_agent, memory
-    
-    def load_memory(self, messages):
-        # Skip the initial message from the assistant (index 0)
-        for i in range(1, len(messages), 2):  
-            user_msg = messages[i]
-            if i + 1 < len(messages):  # Check if there's an assistant message after the user message
-                assistant_msg = messages[i + 1]
-                self.memory.save_context({"input": user_msg["content"]}, {"output": assistant_msg["content"]})  # Update memory with assistant's response
-        return self.memory
-    
-    def clear_conversation(self):
-        self.memory.clear()
-
-    def regenerate_response(self):
-        st.session_state.user_input = st.session_state.history[-2].content
-        st.session_state.history = st.session_state.history[:-2]
-        self.run_agent()
-        return
-    
-    def run_agent(self, input, callbacks=[]):
-        # Define the logic for processing the user's input
-        # For now, let's just use the agent's run method
-        response = self.agent.run(input=input, callbacks=callbacks)
-        return response
-
-class MRKL_Chat:
-    def __init__(self):
-        self.tools = self.load_tools()
         self.agent_executor, self.memory = self.load_agent()
 
     def load_tools(self):
@@ -932,22 +758,11 @@ def main():
 
     with st.sidebar:
 
-        chat_experiment = st.checkbox("Experimental Feature: Enable Memory", value=False)
-        if chat_experiment != st.session_state.chat_exp:
-            st.session_state.chat_exp = chat_experiment
-            if st.session_state.chat_exp:
-                st.session_state.agent = MRKL_Chat()
-            else:
-                st.session_state.agent = MRKL()
-            reset_chat()
 
         br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
         if br18_experiment != st.session_state.br18_exp:
             st.session_state.br18_exp = br18_experiment
-            if st.session_state.chat_exp:
-                st.session_state.agent = MRKL_Chat()
-            else:
-                st.session_state.agent = MRKL()
+            st.session_state.agent = MRKL()
 
         st.sidebar.title("Upload Document to Database")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
@@ -992,10 +807,7 @@ def main():
 
                             vector_store = db_store.get_vectorstore()
                             st.session_state.vector_store = vector_store
-                            if st.session_state.chat_exp is False:
-                                st.session_state.agent = MRKL()
-                            if st.session_state.chat_exp is True:
-                                st.session_state.agent = MRKL_Chat()
+                            st.session_state.agent = MRKL()
                             #st.write(st.session_state.document_metadata)
                             st.success("PDF uploaded successfully!")
 
@@ -1031,9 +843,6 @@ def main():
             current_assistant_response = {"output": response}
 
         current_messages = [current_user_message, current_assistant_response] 
-        if st.session_state.chat_exp is False:    
-            st.session_state.history = st.session_state.agent.load_memory(current_messages)
-
 
 
     with st.expander("View Document Sources"):
@@ -1069,7 +878,7 @@ def main():
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
     st.write(st.session_state.agent)
-    #st.write(st.session_state.result)
+    st.write(st.session_state.result)
 
 
 if __name__== '__main__':
