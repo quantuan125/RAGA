@@ -47,7 +47,7 @@ from langchain.chains.question_answering import map_reduce_prompt, stuff_prompt
 from langchain.agents.agent_toolkits import create_conversational_retrieval_agent
 from langchain.agents.openai_functions_agent.agent_token_buffer_memory import AgentTokenBufferMemory
 from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
-from langchain.schema.messages import SystemMessage
+from langchain.schema.messages import SystemMessage, BaseMessage
 from langchain.prompts import MessagesPlaceholder
 from langchain.agents import AgentExecutor
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
@@ -669,7 +669,7 @@ class MRKL:
         
         # Memory
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output", max_token_limit=4000)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output", max_token_limit=8000)
         st.session_state.history = memory
 
         system_message_content = """
@@ -690,11 +690,18 @@ class MRKL:
         # System Message
         system_message = SystemMessage(content=system_message_content)
 
+        reflection_message_content = """
+        Reminder: Always self-reflect your answer based on the user's query and follows the list of primary objective. 
+        """
+
+        reflection_message = SystemMessage(content=reflection_message_content)
+
         # Prompt
         prompt = OpenAIFunctionsAgent.create_prompt(
             system_message=system_message,
-            extra_prompt_messages=[MessagesPlaceholder(variable_name=memory_key)]
+            extra_prompt_messages=[MessagesPlaceholder(variable_name=memory_key), reflection_message]
         )
+
         
         # Agent
         agent = OpenAIFunctionsAgent(llm=llm, tools=self.tools, prompt=prompt)
