@@ -247,7 +247,7 @@ class BR18_DB:
         #st.write(type(md_header_splits[0]))
         
         # Define chunk size and overlap
-        chunk_size = 1000
+        chunk_size = 1500
         chunk_overlap = 200
         
         # Initialize RecursiveCharacterTextSplitter
@@ -386,7 +386,7 @@ class BR18_DB:
         )
 
         initial_relevant_docs = retriever.get_relevant_documents(query)
-        #st.write(initial_relevant_docs)
+        st.write(initial_relevant_docs)
         #st.write(type(initial_relevant_docs))
 
         keywords = self.get_keywords(query)

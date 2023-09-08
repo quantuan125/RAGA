@@ -320,18 +320,11 @@ are used in 1-storey industrial and storage buildings and which have maximum spa
 a) Structures or structural sections of middle consequence class (CC2) with an untraditional or
 complex structure or structural section.
 b) Structures or structural sections of high consequence class (CC3).
-4) Structure class 4 (KK4), which includes structures or structural sections of high consequence class for
+4) Structure class 4 (KK4), which includes structures or structural sections of high consequence class for which the consequences of failure are particularly serious (CC3+).
+(2) Garages, carports, outbuildings, chicken sheds, greenhouses, roofed-over terraces and similar structures and equipment cabins for electronic communication networks or services with an area not exceeding 50 sq. metres are exempt from classification in structure classes under (1).
 
 
-which the consequences of failure are particularly serious (CC3+).
-(2) Garages, carports, outbuildings, chicken sheds, greenhouses, roofed-over terraces and similar
-structures and equipment cabins for electronic communication networks or services with an area not
-exceeding 50 sq. metres are exempt from classification in structure classes under (1).
 
-
-```
-10
-```
 ### Chapter 27 - Fire classes
 
 490. A building must be classified in a fire class based on
@@ -380,9 +373,7 @@ structures and equipment cabins for electronic communication networks or service
 exceeding 50 sq. metres are exempt from classification in fire classes under (1).
 
 
-```
-10
-```
+
 ### Chapter 28 - Documentation of load-bearing structures
 
 494. Documentation of the load-bearing structures of a building must prove that the performance of the
@@ -412,7 +403,6 @@ state:
 2) that the correct structure classes have been selected, at that the documentation hereof is true;
 3) that the documentation proves that the building will fulfil the requirements of the Building
 Regulations for load-bearing structures, see Chapter 15;
-
 4) that a satisfactory inspection plan has been prepared for the planning and implementation relevant to
 the project stage; and
 5) whether the certified structural engineer will act as planner or inspector, or in an active or
@@ -427,13 +417,7 @@ Regulations for load-bearing structures, see Chapter 15;
 
 499. The declaration of completion must be prepared by the certified structural engineer and must state:
 1) that the documentation of load-bearing structures according to Chapter 28 have been submitted;
-2) that the documentation proves that the structure classes used are in accordance with the building
-
-
-```
-10
-```
-permit;
+2) that the documentation proves that the structure classes used are in accordance with the building permit;
 3) that the documentation proves that the basis of the project and the requirements of the Building
 Regulations for load-bearing structures, see Chapter 5, have been complied with;
 4) that the checks stated in the inspection plan for the building permit have been carried out, and that the
@@ -484,9 +468,6 @@ after A1 is prepared. Basis of structures, see 1 and A2. Structural calculations
 concluded.
 
 
-```
-10
-```
 502. B. The project documentation includes:
 1) B1. Structural project report which describes and documents planning and implementation, and which
 includes, as a minimum, a description of the building, choice of structure classes and documentation
@@ -531,11 +512,6 @@ documentation must include the following elements:
 1) Structure documentation:
 a) A1. Basis of structures, see s. 501(1)(1).
 b) A2. Structural calculations, see s. 501(1)(2).
-
-
-```
-10
-```
 c) A3. Structural drawings and models, see s. 501(1)(3).
 d) A4. Changes to structures, see s. 501(1)(4),
 2) Project documentation:
@@ -544,9 +520,6 @@ b) B2. Structural check report, see s. 502(1)(2).
 c) B3. Structural inspection report, see s. 502(1)(3).
 
 
-```
-10
-```
 ### Chapter 29 - Documentation of fire safety
 
 506. Documentation of the fire safety conditions of a building must prove that the fire safety conditions
@@ -554,6 +527,7 @@ are in accordance with the requirements defined for safety and fitness for use, 
 design, planning and implementation is satisfactory and in accordance with the requirements defined.
 (2) Documentation must be prepared for the fire safety conditions of the building equivalent of the fire
 class to which the building is classified, see Chapter 27.
+
 507. Relevant documentation of fire safety conditions for buildings in fire classes 2-4 when a certified
 fire consultant is used includes:
 1) Declaration of commencement.
@@ -570,6 +544,7 @@ fire consultant is used includes:
 (2) The documentation stated in subsection 1, para (3) - (11), must be prepared and arranged according
 to the principles described in the Guidelines in the Building Regulations for Chapter 5 - Fire.
 (3) The documentation of fire safety conditions for buildings must be prepared in Danish or English.
+
 508. The declaration of commencement must be prepared by the certified fire consultant and must state:
 1) that the documentation of fire safety conditions at the time of application for building permit, see s. 23,
 has been submitted;
@@ -589,16 +564,11 @@ fire requirements of the Building Regulations, see Chapter 5;
 3) that a satisfactory check plan has been prepared for the fire safety documentation, planning of necessary
 fire prevention measures and implementation; and
 4) the role of the certified fire consultant as third-party inspector.
+
 509. The declaration of conclusion must be prepared by the certified fire consultant and must state:
 1) that the documentation of fire safety conditions, which must be submitted under Chapter 33 of the
 Building Regulations, has been submitted;
-2) that the documentation proves that no changes have been made to the fire classification of the building
-
-
-```
-10
-```
-stated on the building permit;
+2) that the documentation proves that no changes have been made to the fire classification of the building stated on the building permit;
 3) that the documentation proves that the requirements in regard to fire safety in the Building Regulations,
 see Chapter 5, have been fulfilled, and that the operation, inspection and maintenance plan indicates
 the operation, inspection and maintenance of the building which is required in order to ensure that the
@@ -630,7 +600,6 @@ Regulations for Chapter 5 - Fire.
 for the building and drawings indicating the layout of the building and supporting the use of the selected
 fire safety strategy in the building.
 (2) The overall strategy must include the following:
-
 1) A description of the design of the building, including the use of the building and a general description
 of the persons using the building.
 2) Allocation of building sections in usage categories, see s. 85, and risk classes, see s. 86.
@@ -646,16 +615,10 @@ choice of fire safety installations which support the protection of load-bearing
 d) Concept for protection against spreading of fire and smoke, including choice of internal surfaces,
 fire safety-related division of the building, distance between buildings and choice of external facing
 and fire safety installations which support the protection against spreading of fire and smoke.
-e) Options for emergency service action, including the need for search and rescue of persons, access
-
-
-```
-10
-```
-```
-roads to the building, access routes for emergency services in the building and fire safety
+e) Options for emergency service action, including the need for search and rescue of persons, access roads to the building, access routes for emergency services in the building and fire safety
 installations which support the protection against spreading of fire and smoke.
-```
+
+
 512. The fire strategy report must describe how the requirements in terms of fire are fulfilled for the
 building with due consideration of the usage category and risk class of the building.
 513. Fire plans must indicate the fire plan for the building and further elaborate on the fire strategy report.
@@ -696,9 +659,7 @@ b) Reaction to fire and fire resistance, if any, of surfaces and facings.
 c) Classes of fire safety installations.
 
 
-```
-10
-```
+
 d) Capacity of fire safety installations.
 4) Standards assumed to be used as a basis of planning and implementation.
 5) Methods for checks of the implementation of the various fire protection measures, including
@@ -743,9 +704,7 @@ regular inspection and maintenance of any fire safety installations and building
 8) System integration test in which several fire safety installations act together as one system.
 
 
-```
-10
-```
+
 ### Chapter 30 - Inspection of documentation of load-bearing structures and fire safety
 
 523. Inspection of documentation for load-bearing structures and fire safety is intended to ensure that the
@@ -787,9 +746,7 @@ act as third-party inspector see s. 526, and according to DS/EN 1990 Basis for p
 structures, Annex B4 with related DS/EN 1990 DK NA.
 
 
-```
-11
-```
+
 ### Chapter 31 - Construction designer of load-bearing structures
 
 529. The applicant must appoint a construction designer for the load-bearing structures with
@@ -820,9 +777,7 @@ inspection of planning and implementation.
 14) Collection of structural documentation of the entire building in order to present a whole.
 
 
-```
-11
-```
+
 ### Chapter 32 - The roles of the certified structural engineer and fire consultant
 
 531. The purpose of the work of the certified structural engineer and fire consultant is to ensure that:
@@ -855,9 +810,7 @@ certified expert can only approve documentation prepared in his or her own organ
 535. The third-party inspector may not be limited in his or her performance of the inspection.
 
 
-```
-11
-```
+
 ### Chapter 33 - The role of the certified structural engineer
 
 536. The certified structural engineer may act as:
@@ -904,9 +857,6 @@ and
 4) Checking that the structure functions as a whole across structural sections.
 
 
-```
-11
-```
 541. In the role of active inspector, as a minimum, the certified structural engineer must inspect the
 structural documentation on the inspection levels stated in Appendix 4, Table 2.
 542. In his or her capacity of head inspector, the certified structural engineer must check that the structural
@@ -944,9 +894,7 @@ documentation transferred, corresponding to the role of a certified structural e
 inspector.
 
 
-```
-11
-```
+
 ### Chapter 34 - The role of the certified fire consultant
 
 545. The certified fire consultant may act as:
@@ -994,9 +942,7 @@ final or drafts.
 4) Status of performance of inspection, see the inspection plan and inspection reports.
 
 
-```
-11
-```
+
 5) Critical issues in the project which require special attention of the certified fire consultant taking over
 the project, e.g. deviations from the Guidelines in the Building Regulations for Chapter 5 - Fire, or
 circumstances which makes the building non-traditional in terms of contingency tactics.
@@ -1009,9 +955,7 @@ consultant taking over the project must carry out a maximum (MAX) inspection of 
 transferred, corresponding to the role of a certified fire consultant acting as an inspector.
 
 
-```
-11
-```
+
 ### Chapter 35 - Accreditation of structural engineers
 
 552. Accreditation of structural engineers is granted to persons who carry out their work in Denmark and
@@ -1058,9 +1002,7 @@ manual, which must
 (6) The accrediting body must publish information on each accredited structural engineer, including the
 
 
-```
-11
-```
+
 term of accreditation, the country of origin of the accreditation, the educational background of the
 accredited structural engineer and the business title of the accredited structural engineer.
 (7) If the accreditation was granted in another country, the name of the competent authority in that country
@@ -1113,9 +1055,7 @@ may only be extended once, and the applicant must be informed of the reason here
 possess
 
 
-```
-11
-```
+
 1) professional qualifications equivalent of the requirements described in this Chapter and
 2) sufficient language skills required to carry out the work as accredited structural engineer in Denmark
 in accordance with the Building Regulations.
