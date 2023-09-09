@@ -52,9 +52,6 @@ from langchain.prompts import MessagesPlaceholder
 from langchain.agents import AgentExecutor
 from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain.schema import HumanMessage, SystemMessage
-from langchain.retrievers.multi_vector import MultiVectorRetriever
-from langchain.storage import InMemoryStore
-import uuid
 
 langchain.debug = True
 langchain.verbose = True
@@ -390,20 +387,20 @@ class BR18_DB:
         search_kwargs={'k': 20}
         )
 
-        relevant_docs = retriever.get_relevant_documents(query)
-        #st.write(relevant_docs)
-        #st.write(type(relevant_docs))
+        initial_relevant_docs = retriever.get_relevant_documents(query)
+        #st.write(initial_relevant_docs)
+        #st.write(type(initial_relevant_docs))
 
         keywords = self.get_keywords(query)
         #st.write(keywords)
 
 
-        filtered_docs = self.post_filter_documents(keywords, relevant_docs)
+        filtered_docs = self.post_filter_documents(keywords, initial_relevant_docs)
         #st.write(filtered_docs)
         #st.write(type(filtered_docs[0]))
 
         if not filtered_docs:
-            non_filtered = relevant_docs[:5]
+            non_filtered = initial_relevant_docs[:5]
             #st.write(non_filtered)
             return non_filtered
 
@@ -442,7 +439,8 @@ class BR18_Appendix:
         self.folder_path = folder_path
         self.md_paths = self.load_documents()  # Renamed from pdf_paths to md_paths
         self.embeddings = OpenAIEmbeddings()
-        self.retriever = self.create_vectorstore()
+        self.vectorstore = self.create_vectorstore()
+        self.retriever = None
 
     def load_documents(self):
         md_paths = list(Path(self.folder_path).rglob("*.md"))
@@ -478,94 +476,168 @@ class BR18_Appendix:
         #st.write(type(md_header_splits[0]))
         
         # Define chunk size and overlap
-        parent_chunk_size = 3500
-        parent_chunk_overlap = 0
+        chunk_size = 2200
+        chunk_overlap = 0
         
         # Initialize RecursiveCharacterTextSplitter
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=parent_chunk_size, chunk_overlap=parent_chunk_overlap
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
         
         # Split the header-split documents into chunks
-        all_parent_splits = text_splitter.split_documents(md_header_splits)
+        all_splits = text_splitter.split_documents(md_header_splits)
 
-        for split in all_parent_splits:
-            metadata_str = f"{split.metadata.get('Header 3', '')}\n\n{split.metadata.get('Header 4', '')}"
-            split.page_content = f"{metadata_str}\n\n{split.page_content}"
+        # Output for debugging
 
-        return all_parent_splits
+        return all_splits
     
-    def generate_child_splits(self, parent_splits: List[Document]) -> List[Document]:
-        child_chunk_size = 300
-
-        child_text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=child_chunk_size, chunk_overlap=0
-        )
-
-        all_child_splits = []
-        for parent_split in parent_splits:
-            child_splits = child_text_splitter.split_text(parent_split.page_content)
-            first_child_split = Document(
-            page_content=child_splits[0],  # Assuming this is a string
-            metadata=parent_split.metadata  # You can copy the metadata from the parent or set as needed
-            )
-            all_child_splits.append(first_child_split)  # Append only the first child split (assuming it contains the metadata)
-
-
-        return all_child_splits
-
     def process_all_documents(self):
-        all_parent_splits = []  # Local variable to store all parent splits
-        all_child_splits = []  # Local variable to store all child splits
-        
+        all_processed_splits = []
         for markdown_document in self.md_paths:
-            parent_splits = self.split_and_chunk_text(markdown_document)
-            child_splits = self.generate_child_splits(parent_splits)
-            
-            all_parent_splits.extend(parent_splits)
-            all_child_splits.extend(child_splits)
+            processed_splits = self.split_and_chunk_text(markdown_document)
+            for split in processed_splits:
+            # Include metadata directly in the document content
+                split_with_metadata = f"{split.metadata.get('Header 4', '')}\n\n{split.page_content}"
+                all_processed_splits.append(Document(page_content=split_with_metadata, metadata=split.metadata))
 
-        st.write(all_parent_splits)
-        st.write(all_child_splits)
-
-        return all_parent_splits, all_child_splits  # Return both lists
+        return all_processed_splits
     
     def create_vectorstore(self):
-        all_parent_splits, all_child_splits = self.process_all_documents()
-        
-        id_key = "doc_id" 
-        br18_appendix_parent_store = InMemoryStore()
-        parent_doc_ids = [str(uuid.uuid4()) for _ in all_parent_splits]
-        br18_appendix_parent_store.mset(list(zip(parent_doc_ids, all_parent_splits)))
-
-        for parent_id, child_split in zip(parent_doc_ids, all_child_splits):
-            child_split.metadata[id_key] = parent_id
+        # Use the process_all_documents method to get all the processed splits
+        all_splits = self.process_all_documents()
+        st.write(all_splits)
 
         # Create and save the vector store to disk
-        br18_appendix_child_vectorstore = FAISS.from_documents(documents=all_child_splits, embedding=self.embeddings)
-        st.write(br18_appendix_child_vectorstore)
+        br18_appendix_vectorstore = FAISS.from_documents(documents=all_splits, embedding=self.embeddings)
 
         # Store the vector store in the session state
-        st.session_state.br18_appendix_vectorstore = br18_appendix_child_vectorstore
-
-        retriever = MultiVectorRetriever(
-        vectorstore=br18_appendix_child_vectorstore, 
-        docstore=br18_appendix_parent_store,  # Use the in-memory parent store
-        id_key=id_key  # The key used to match parent and child documents
-        )
-        st.write(retriever)
-        st.write(all_child_splits)
+        st.session_state.br18_appendix_vectorstore = br18_appendix_vectorstore
         
-        return retriever
+        return br18_appendix_vectorstore
+    
+    def get_keywords(self, query: str) -> list:
+        # Define the prompt template
+        prompt_template = """
+        The user is searching for specific information within the appendix of the building regulation.
+        Your task is to list only the specific keywords from the following user query: {query}
+
+        Please adhere to the following guidelines: 
+        - Interpret intent and correct typos.
+        - Include both singular and plural forms.
+        - Consider formal hyphenations and compound words.
+        Exclude the following common terms and their variations or synonyms especially for these words: 
+        - "building", "buildings", "construction", "constructions"
+        - "regulation", "regulations", "requirement", "regulatory", "requirements"
+
+
+        Example 1: 
+        Query: "What is the building regulation regarding stairs"
+        Answer: "stair, stairs"
+
+        Example 2: 
+        Query: "How is the law applied to ventilation in residential building?"
+        Answer: "ventionlation, residential"
+
+        Example 3: 
+        Query: "List the regulatory requirement regarding fire safety"
+        Answer: "fire safety"
+
+        Example 4:
+        Query: "What are the regulations regarding noise in non residential building?"
+        Answer: "noise, non-residential"
+        """
+
+        llm_chain = LLMChain(
+            llm=self.llm,
+            prompt=PromptTemplate.from_template(prompt_template)
+        )
+        # Extract keywords from the query
+        keywords_str = llm_chain.predict(query=query)
+        # Convert the keywords string into a list
+        keywords = keywords_str.split(", ")
+
+        return keywords
+
+    def post_filter_documents(self, keywords: List[str], source_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        filtered_docs = []
+        header_4_matched_docs = []
+        header_3_matched_docs = []
+
+        for doc in source_docs:
+            headers = doc.metadata
+            #st.write(f"Current Document Metadata: {headers}")
+
+            # Check if Header 4 exists
+            header_4_exists = 'Header 4' in headers
+            st.write(f"Does Header 4 Exist?: {header_4_exists}")
+
+            header_3_content = headers.get('Header 3', "").lower()
+            header_4_content = headers.get('Header 4', "").lower()
+
+            st.write(f"Header 3 Content: {header_3_content}")
+            st.write(f"Header 4 Content: {header_4_content}")
+
+            header_3_matched_keywords = set()
+            header_4_matched_keywords = set()
+
+            for keyword in keywords:
+                keyword_lower = keyword.lower()
+                st.write(f"Checking Keyword: {keyword_lower}")
+
+                # Check for matches in Header 4 only if it exists
+                if header_4_exists:
+                    if keyword_lower in header_4_content:
+                        #st.write("Keyword matches in Header 4.")
+                        header_4_matched_keywords.add(keyword_lower)
+                else:
+                    # If Header 4 doesn't exist, check for matches in Header 3
+                    if keyword_lower in header_3_content:
+                        st.write("Keyword matches in Header 3.")
+                        header_3_matched_keywords.add(keyword_lower)
+
+            st.write(f"Matched Keywords in Header 3: {header_3_matched_keywords}")
+            st.write(f"Matched Keywords in Header 4: {header_4_matched_keywords}")
+
+            # Determine whether to add the document to the filtered list
+            if header_4_exists and header_4_matched_keywords:
+                #st.write("Document added based on Header 4 matches.")
+                header_4_matched_docs.append(doc)
+            elif not header_4_exists and header_3_matched_keywords:
+                #st.write("Document added based on Header 3 matches.")
+                header_3_matched_docs.append(doc)
+
+            filtered_docs = header_4_matched_docs + header_3_matched_docs
+
+        return filtered_docs
+
+    def create_retriever(self, query: str):
+        retriever = self.vectorstore.as_retriever(
+        search_kwargs={'k': 4}
+        )
+
+        initial_relevant_docs = retriever.get_relevant_documents(query)
+        st.write(initial_relevant_docs)
+        #st.write(type(initial_relevant_docs))
+
+        keywords = self.get_keywords(query)
+        #st.write(keywords)
+
+
+        filtered_docs = self.post_filter_documents(keywords, initial_relevant_docs)
+        st.write(filtered_docs)
+        #st.write(type(filtered_docs[0]))
+
+        if not filtered_docs:
+            non_filtered = initial_relevant_docs[:3]
+            st.write(non_filtered)
+            return non_filtered
+
+        return filtered_docs
     
     def run(self, query: str):
-        relevant_child_docs = self.retriever.vectorstore.similarity_search(query)
-        st.write(relevant_child_docs)
-        parent_docs = self.retriever.get_relevant_documents(query)[:1]
-        st.write(parent_docs)
-
-        prompt_template = """Use the following tables from the BR18 appendix to answer the question at the end. 
-        The answer should be as specific as possible in terms of requirement numbers and value, referencing the appendix and table numbers where the answer originates.  
+        prompt_template = """Use the following pieces of context to answer the question at the end. 
+        The answer should be as specific as possible.
+        Make sure to mention requirement numbers and specific integer values where relevant.
         If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
         {context}
@@ -576,11 +648,15 @@ class BR18_Appendix:
             template=prompt_template, input_variables=["context", "question"]
         )
 
+        # Retrieve the filtered documents
+        filtered_docs = self.create_retriever(query)
+        #st.write(type(filtered_docs[0]))
+        #st.write(filtered_docs)
 
         qa_chain = load_qa_chain(self.llm, chain_type="stuff", verbose=True, prompt=PROMPT)
-        output = qa_chain({"input_documents": parent_docs, "question": query}, return_only_outputs=True)
+        output = qa_chain({"input_documents": filtered_docs, "question": query}, return_only_outputs=True)
 
-        st.session_state.doc_sources = parent_docs
+        st.session_state.doc_sources = filtered_docs
 
         return output
 
@@ -918,7 +994,7 @@ def main():
     #st.write(st.session_state.messages)
     #st.write(st.session_state.vector_store)
     st.write(st.session_state.br18_vectorstore)
-    st.write(st.session_state.br18_appendix_child_vectorstore)
+    st.write(st.session_state.br18_appendix_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
     st.write(st.session_state.agent)
     #st.write(st.session_state.result)
