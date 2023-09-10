@@ -756,6 +756,7 @@ more than 10 persons.
 5) Shops accommodating over 150 persons.
 6) Buildings for which the use of the buildings requires certain operational measures in order to maintain
 the fire safety of the building.
+
 148. An operation, inspection and maintenance plan for building sections stated in s. 147 must be prepared
 to ensure that ss. 137-142 are complied with, and:
 1) A description of the operational organisation, including information about the person(s) in charge of
@@ -769,8 +770,6 @@ equipment and fire safety installations.
 5) For buildings covered by s. 147 for which an electricity safety certificate is not required under the
 Executive order on inspection of electrical installations in assembly facilities, a certificate must be
 prepared by a certified electrician every three years for escape route and anti-panic lighting, alerting
-
-
 systems and automatic fire door closing systems. The certificate issued by the certified electrician
 must be submitted to the local council.
 6) An area distribution plan must be prepared and fitted on the wall in rooms covered by s. 147(1)(2).
@@ -835,14 +834,13 @@ maintenance.
 
 156. Operation, maintenance and regular inspection of the following transportable structures and areas
 must be carried out in a way which ensures that ss. 137-142 and s. 157 are observed at all times:
-
-```
 1) Transportable tents and structures.
 2) Festival areas with associated sales and camping areas.
 3) Assembly tents.
 4) Market places.
 5) Sales areas.
-```
+
+
 157. An operation, inspection and maintenance plan for transportable tents and structures, festival areas
 with associated sales and camping areas, assembly tents and market places in s. 156 must be prepared in a
 way which ensures that ss. 137-142 is complied with and that:
@@ -854,8 +852,7 @@ plan are prepared;
 the staff is has received instructions in the location and use of fire extinguishing equipment and fire
 safety installations.
 
-
-1 58. Ss. 156 and 157 are considered to be complied with when the operation, inspection and maintenance
+158. Ss. 156 and 157 are considered to be complied with when the operation, inspection and maintenance
 plan is prepared in accordance with the Guidelines of the Building Regulations on operation, inspection
 and maintenance.
 
@@ -1403,15 +1400,9 @@ kWh/sq. metre per year plus 1,000 kWh per year divided by the heated floor area.
 building for heating, ventilation, cooling, domestic hot water and lighting per sq. metre heated floor area
 may not exceed 41.0 kWh/sq. metre per year plus 1,000 kWh per year divided by the heated floor area.
 (2) For non-residential buildings not subject to s. 259 which are heated to a temperature between 5.0 and
-15.0
-°C, the calculation will be carried out based on a room temperature of 15 °C.
+15.0 °C, the calculation will be carried out based on a room temperature of 15 °C.
 (3) For non-residential buildings not subject to s. 259 or building sections in such buildings which require
-a high illumination level, extra ventilation, large consumption of domestic hot water or a long usage period
-
-
-or buildings with large headroom, the energy framework is increased by an amount corresponding to the
-calculated energy consumption for the relevant purpose. The increase is calculated in accordance with the
-instructions of the Danish Building Research Institute 213 Energy demand in buildings.
+a high illumination level, extra ventilation, large consumption of domestic hot water or a long usage period or buildings with large headroom, the energy framework is increased by an amount corresponding to the calculated energy consumption for the relevant purpose. The increase is calculated in accordance with the instructions of the Danish Building Research Institute 213 Energy demand in buildings.
 
 #### Requirements for the use of energy frameworks
 
