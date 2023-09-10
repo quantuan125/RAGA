@@ -13,7 +13,7 @@ import streamlit as st
 import langchain
 from langchain.utilities import SerpAPIWrapper
 from langchain.chains import RetrievalQA
-from langchain.text_splitter import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter, CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter
 from langchain.vectorstores import FAISS, Chroma, Pinecone
 from langchain.embeddings import OpenAIEmbeddings
 from PyPDF2 import PdfReader
@@ -55,11 +55,6 @@ from langchain.schema import HumanMessage, SystemMessage
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain.storage import InMemoryStore
 import uuid
-from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import DocumentCompressorPipeline
-from langchain.document_transformers import EmbeddingsRedundantFilter
-from langchain.retrievers.document_compressors import EmbeddingsFilter
-
 
 langchain.debug = True
 langchain.verbose = True
@@ -86,13 +81,10 @@ class DBStore:
     def __init__(self, file_path, file_name):
         self.file_path = file_path
         self.file_name = os.path.splitext(file_name)[0]
-        st.session_state.document_filename = self.file_name
-
         self.reader = pypdf.PdfReader(file_path)
         self.metadata = self.extract_metadata_from_pdf()
         self.embeddings = OpenAIEmbeddings()
         self.vector_store = None
-
 
     def extract_metadata_from_pdf(self):
         """Extract metadata from the PDF."""
@@ -134,18 +126,12 @@ class DBStore:
     @staticmethod
     def remove_multiple_newlines(text):
         return re.sub(r"\n{2,}", "\n", text)
-    
-    @staticmethod
-    def remove_dots(text):
-        # Replace sequences of three or more dots with a single space.
-        return re.sub(r'\.{4,}', ' ', text)
 
     def clean_text(self, pages):
         cleaning_functions = [
             self.merge_hyphenated_words,
             self.fix_newlines,
             self.remove_multiple_newlines,
-            self.remove_dots,
         ]
         cleaned_pages = []
         for page_num, text in pages:
@@ -158,7 +144,7 @@ class DBStore:
         doc_chunks = []
         for page_num, page in text:
             text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=2000,
+                chunk_size=1000,
                 separators=["\n\n", "\n", ".", "!", "?", ",", " ", ""],
                 chunk_overlap=200,
             )
@@ -191,93 +177,29 @@ class DBStore:
         return vector_store
    
 class DatabaseTool:
-    def __init__(self, llm, vector_store, metadata=None, filename=None):
-        self.llm = llm
-        self.vector_store = vector_store
+    def __init__(self, llm, vector_store, metadata=None):
+        self.retrieval = RetrievalQA.from_chain_type(
+            llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
+            return_source_documents=True
+        )
         self.metadata = metadata
-        self.filename = filename
-        self.embedding = OpenAIEmbeddings()
 
     def get_description(self):
         base_description = "Always useful for finding the exactly written answer to the question by looking into a collection of documents."
-        filename = self.filename
-        title = self.metadata.get("/Title") if self.metadata else None
-        author = self.metadata.get("/Author") if self.metadata else None
-        subject = self.metadata.get("/Subject") if self.metadata else None
-
-        footer_description = "Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database. Use this more than the normal search tool"
-
-        if title:
-            main_description = f"This tool is currently loaded with '{title}'"
-
+        if self.metadata:
+            title = self.metadata.get("/Title")
+            author = self.metadata.get("/Author")
+            subject = self.metadata.get("/Subject")
             if author:
-                main_description += f" by '{author}'"
-
-            if subject:
-                main_description += f", and has a topic of '{subject}'"
-
-            return f"{base_description} {main_description}. {footer_description}"
-        else:
-            no_title_description = f"This tool is currently loaded with the document '{filename}'"
-            return f"{base_description} {no_title_description}. {footer_description}"
-
-    def get_base_retriever(self):
-        base_retriever = self.vector_store.as_retriever(search_kwargs={'k': 5})
-        return base_retriever
-
-    def get_contextual_retriever(self):
-        # Initialize embeddings (assuming embeddings is already defined elsewhere)
-        embeddings = self.embedding
-        
-        # Initialize Redundant Filter
-        redundant_filter = EmbeddingsRedundantFilter(embeddings=embeddings)
-        
-        # Initialize Relevant Filter
-        relevant_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.76)
-        #st.write(relevant_filter)
-        
-        # Initialize Text Splitter
-        splitter = CharacterTextSplitter(chunk_size=300, chunk_overlap=0, separator=". ")
-        
-        # Create Compressor Pipeline
-        pipeline_compressor = DocumentCompressorPipeline(
-            transformers=[splitter, redundant_filter, relevant_filter]
-        )
-        
-        # Initialize Contextual Compression Retriever
-        contextual_retriever = ContextualCompressionRetriever(
-            base_compressor=pipeline_compressor, 
-            base_retriever=self.get_base_retriever()
-        )
-        
-        return contextual_retriever
+                return f"{base_description} This tool is currently loaded with '{title}' by '{author}', and has a topic of '{subject}'. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database. Use this more than the normal search tool"
+            else:
+                return f"{base_description} This tool is currently loaded with '{title}', and has a topic of {subject}. Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database. Use this more than the normal search tool"
+        return base_description
 
 
     def run(self, query: str):
-        contextual_retriever = self.get_contextual_retriever()
-        #DEBUGGING & EVALUTING ANSWERS:
-        compressed_docs = contextual_retriever.get_relevant_documents(query)
-        compressed_docs_list = []
-        for doc in compressed_docs:
-            doc_info = {
-            "Page Content": doc.page_content,
-            }
-            compressed_docs_list.append(doc_info)
-        st.write(compressed_docs_list)
-        
-        base_retriever=self.get_base_retriever()
-        initial_retrieved = base_retriever.get_relevant_documents(query)
-
-        retrieval = RetrievalQA.from_chain_type( 
-        llm=self.llm, chain_type="stuff", 
-        retriever=contextual_retriever,
-        return_source_documents=True,
-        )
-
-        output = retrieval(query)
-        st.session_state.doc_sources = initial_retrieved
-
-        
+        output = self.retrieval(query)
+        st.session_state.doc_sources = output['source_documents']
         return output['result']
 
 class BR18_DB:
@@ -513,6 +435,7 @@ class BR18_DB:
 
         return output
 
+
 class BR18_Appendix: 
     def __init__(self, llm, folder_path: str):
         self.llm = llm
@@ -661,6 +584,7 @@ class BR18_Appendix:
 
         return output
 
+
 class SummarizationTool():
     def __init__(self, document_chunks):
         self.llm = ChatOpenAI(
@@ -738,10 +662,9 @@ class MRKL:
 
         if st.session_state.vector_store is not None:
             metadata = st.session_state.document_metadata
-            file_name = st.session_state.document_filename
-            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata, filename=file_name)
+            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata)
 
-            st.write(llm_database.get_description())
+            #st.write(llm_database.get_description())
 
             tools.append(
                 Tool(
@@ -927,8 +850,7 @@ def main():
                             vector_store = db_store.get_vectorstore()
                             st.session_state.vector_store = vector_store
                             st.session_state.agent = MRKL()
-                            st.write(st.session_state.document_metadata)
-                            st.write(st.session_state.document_filename)
+                            #st.write(st.session_state.document_metadata)
                             st.success("PDF uploaded successfully!")
 
                 if "document_chunks" in st.session_state:
@@ -996,7 +918,7 @@ def main():
     #st.write(st.session_state.messages)
     #st.write(st.session_state.vector_store)
     st.write(st.session_state.br18_vectorstore)
-    #st.write(st.session_state.br18_appendix_child_vectorstore)
+    st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
     st.write(st.session_state.agent)
     #st.write(st.session_state.result)
