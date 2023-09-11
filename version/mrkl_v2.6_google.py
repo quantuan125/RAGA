@@ -65,9 +65,8 @@ import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 from langchain.tools import BaseTool
-from typing import Type, Optional
+from typing import Type
 from langchain.document_loaders import SeleniumURLLoader
-from langchain.pydantic_v1 import BaseModel, Extra, root_validator
 
 
 langchain.debug = True
@@ -785,11 +784,9 @@ class CustomGoogleSearchTool(BaseTool):
     name = "custom_google_search_tool"
     description = "A custom Google Search tool that fetches, scrapes, and summarizes HTML content."
     
-    google_api_key: Optional[str] = Field(None, description="Your Google API Key")
-    google_cse_id: Optional[str] = Field(None, description="Your Custom Google Search Key")
-
-    class Config:
-        extra = Extra.forbid
+    def __init__(self, google_api_key, google_cse_id):
+        self.google_api_key = google_api_key
+        self.google_cse_id = google_cse_id
 
     class ScraperInput(BaseModel):
         url: str
@@ -815,7 +812,7 @@ class CustomGoogleSearchTool(BaseTool):
         research_urls = [item['link'] for item in search_response['items']]
         return research_urls
 
-    def scrape_content(self, url):
+    def scrape_content(self, url, question):
         urls = [url]
         loader = SeleniumURLLoader(urls=urls)
         data = loader.load()
@@ -825,12 +822,12 @@ class CustomGoogleSearchTool(BaseTool):
             return text[:2000]  # Return first 2000 characters
         return ''
 
-    def _run(self, query: str):
+    def run(self, url: str, question: str):
         # For now, just return scraped content from 2 URLs
-        urls = self.get_research_urls(query)
+        urls = self.get_research_urls(question)
         texts = []
-        for url in urls[:2]:  # Limit to first 2 URLs
-            text = self.scrape_content(url)
+        for url in urls:
+            text = self.scrape_content(url, question)
             texts.append(text)
         return " ".join(texts)[:2000]
 
@@ -849,7 +846,7 @@ class MRKL:
             model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
-        llm_search = CustomGoogleSearchTool()
+        llm_search = GoogleSearchAPIWrapper(k=5)
 
         current_directory = os.getcwd()
 
