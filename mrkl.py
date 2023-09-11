@@ -202,11 +202,60 @@ class DBStore:
         first_chunk = self.get_pdf_text()[0].page_content if self.get_pdf_text() else ""
     
     # Extract the first 100 characters to form an information snippet
-        info_snippet = first_chunk[:100]  # Limit to 100 characters
-        st.write(info_snippet)
+        info_document = first_chunk[:100]  # Limit to 100 characters
+        st.write(info_document)
 
-        return info_snippet
+        return info_document
 
+    def get_info_response(self):
+        llm = ChatOpenAI(
+            temperature=0, 
+            streaming=True,
+            model_name="gpt-3.5-turbo"
+            )
+        document_filename = self.file_name
+        document_title = self.metadata.get("title", None)
+        document_snippet = self.get_document_info()
+
+        document_info = {
+        "document_filename": document_filename,
+        "document_title": document_title,
+        "document_snippet": document_snippet,
+        }
+
+        if document_title:
+            info_response_prompt = """The user has uploaded a document titled '{document_title}' to the Document Database """
+        else:
+            info_response_prompt = """The user has uploaded a document named '{document_filename}' to the Document Database """
+
+
+        info_response_prompt += """
+        with the following information: {document_snippet}. 
+
+        In one sentence, inform the user about the document, prioritizing its name or title. 
+        Also, prompt the user to ask a general question about the document in an assistive manner. 
+        Begin your response with 'It appears you've uploaded a document that contains information on...'.
+
+        Example:
+        It appears you've uploaded a document that contains information on "COWI Policies and Guideline". 
+
+        Please feel free to ask any question about this document such as "What are the COWI Policies and Guideline?" 
+        """
+
+        #st.write(info_response_prompt)
+
+        # Create the LLMChain
+        llm_chain = LLMChain(
+            llm=llm,  
+            prompt=PromptTemplate.from_template(info_response_prompt)
+        )
+    
+        # Generate the primed document message
+        llm_response = llm_chain(document_info)
+        
+        info_response = llm_response.get('text', '')
+        st.write(info_response)
+        return info_response
    
 class DatabaseTool:
     def __init__(self, llm, vector_store, metadata=None, filename=None):
@@ -949,45 +998,15 @@ def main():
 
                             st.session_state.agent = MRKL()
 
-                            document_filename = selected_file.name
-                            document_title = st.session_state.document_metadata.get('Title', None)
-                            document_info = db_store.get_document_info()
-                            st.session_state.document_info = document_info
+                            primed_info_response = db_store.get_info_response()
+                            st.write(primed_info_response)
 
-                            if document_title:
-                                primed_document_info = f"A document titled '{document_title}' has been uploaded to the Document Database"
-                            else:
-                                primed_document_info = f"A document named '{document_filename}' has been uploaded to the Document Database"
-
-                            primed_document_info += f"""
-                            with the following information: {document_info}
-
-                            Without accessing the database, inform the document to the user in one sentence. Prioritize the name or title of the document over the information and do not give more information than necessary. 
-                            Additionally, kindly prompt the user to ask general questions about the document in an assistive manner. Stick to one question only that are similar to the ones in the example
-
-                            Begin your response with 'It appears you've uploaded a document that contains information on...' 
-
-                            Example:
-                            It appears you've uploaded a document that contains information on the "House of Generations" project in Fredensborg Municipality. 
-                            
-                            Please feel free to ask any information about this document such as "What is the "House of Generations" project?" 
-
-                            Example:
-                            It appears you've uploaded a document that contains information on "COWI Policies and Guideline". 
-
-                            Please feel free to ask any information about this document such as "What are the COWI Policies and Guideline?" 
-                            """
-                            st.write(primed_document_info)
-                            primed_document_result = st.session_state.agent.run_agent(input=primed_document_info)
-                            primed_document_response = primed_document_result.get('output', '')
-                            st.session_state.messages.append({"roles": "assistant", "content": primed_document_response})
+                            st.session_state.messages.append({"roles": "assistant", "content": primed_info_response})
                 
-                            st.write(st.session_state.document_metadata)
-                            st.write(st.session_state.document_filename)
                             st.success("PDF uploaded successfully!")
 
                 if "document_chunks" in st.session_state:
-                        if st.sidebar.button("Create Summary"):
+                        if st.sidebar.button("Create Detailed Summary"):
                             with st.spinner("Summarizing"):
                                 summarization_tool = SummarizationTool(document_chunks=st.session_state.document_chunks)
                                 st.session_state.summary = summarization_tool.run()
