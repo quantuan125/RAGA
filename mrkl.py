@@ -781,58 +781,34 @@ class SummarizationTool():
     def run_chain(self):
         return self.chain.run(self.document_chunks)
 
-class CustomGoogleSearchTool(BaseTool):
-    name = "custom_google_search_tool"
-    description = "A custom Google Search tool that fetches, scrapes, and summarizes HTML content."
-    
-    google_api_key: Optional[str] = Field(None, description="Your Google API Key")
-    google_cse_id: Optional[str] = Field(None, description="Your Custom Google Search Key")
+class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
-    class Config:
-        extra = Extra.forbid
-
-    class ScraperInput(BaseModel):
-        url: str
-        question: str
-
-    args_schema: Type[BaseModel] = ScraperInput
-    
-    def build_googlesearch_url(self, q, num=10):
-        q = q.replace(" ", "+")
-        base_url = "https://customsearch.googleapis.com/customsearch/v1"
-        url_params = f"?q={q}&cx={self.google_cse_id}&num={num}&key={self.google_api_key}&alt=json"
-        full_url = base_url + url_params
-        return full_url
-
-    def google_search_response(self, url):
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for 4xx and 5xx status codes
-        return response.json()
-
-    def get_research_urls(self, query):
-        search_url = self.build_googlesearch_url(query)
-        search_response = self.google_search_response(search_url)
-        research_urls = [item['link'] for item in search_response['items']]
-        return research_urls
-
-    def scrape_content(self, url):
-        urls = [url]
-        loader = SeleniumURLLoader(urls=urls)
+    def scrape_content(self, url: str) -> str:
+        loader = SeleniumURLLoader(urls=[url])
         data = loader.load()
+        
         if data is not None and len(data) > 0:
             soup = BeautifulSoup(data[0].page_content, "html.parser")
             text = soup.get_text()
             return text[:2000]  # Return first 2000 characters
         return ''
+    
+    def fetch_and_scrape(self, query: str, num_results: int = 3) -> str:
+        # Step 1: Fetch search results metadata
+        metadata_results = self.results(query, num_results)
+        if len(metadata_results) == 0:
+            return "No good Google Search Result was found"
+        
+        # Step 2: Extract URLs
+        urls = [result.get("link", "") for result in metadata_results if "link" in result]
 
-    def _run(self, query: str):
-        # For now, just return scraped content from 2 URLs
-        urls = self.get_research_urls(query)
+        # Step 3: Scrape content from URLs
         texts = []
-        for url in urls[:2]:  # Limit to first 2 URLs
-            text = self.scrape_content(url)
-            texts.append(text)
-        return " ".join(texts)[:2000]
+        for url in urls:
+            scraped_content = self.scrape_content(url)
+            texts.append(scraped_content)
+        
+        return " ".join(texts)[:2000]   # Return first 2000 characters combined from all URLs
 
 
 
@@ -849,14 +825,14 @@ class MRKL:
             model_name="gpt-3.5-turbo"
             )
         llm_math = LLMMathChain(llm=llm)
-        llm_search = CustomGoogleSearchTool()
+        llm_search = CustomGoogleSearchAPIWrapper()
 
         current_directory = os.getcwd()
 
         tools = [
             Tool(
                 name="Google_Search",
-                func=llm_search.run,
+                func=llm_search.fetch_and_scrape,
                 description="Useful when you cannot find a clear answer after looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
             ),
             Tool(
