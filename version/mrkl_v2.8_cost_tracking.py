@@ -6,6 +6,7 @@ from langchain.llms import OpenAI
 from langchain.agents import load_tools, initialize_agent, AgentType, Tool, AgentExecutor, ConversationalAgent, ZeroShotAgent
 from langchain.callbacks import StreamlitCallbackHandler
 from langchain.tools import DuckDuckGoSearchRun
+from langchain.memory import ConversationBufferMemory, ConversationBufferWindowMemory
 from langchain.chains import LLMMathChain
 from langchain.chains import LLMChain, StuffDocumentsChain
 import streamlit as st
@@ -18,12 +19,16 @@ from langchain.embeddings import OpenAIEmbeddings
 from PyPDF2 import PdfReader
 import tempfile
 import pypdf
+import json
 import openai
 from pathlib import Path
 from langchain.docstore.document import Document
-from langchain.document_loaders import TextLoader
+from langchain.chains.router import MultiRetrievalQAChain
+from langchain.document_loaders import DirectoryLoader, PyPDFLoader, TextLoader, WebBaseLoader, UnstructuredMarkdownLoader
 from langchain.chains.summarize import load_summarize_chain
 from langchain import PromptTemplate
+from langchain.retrievers.self_query.base import SelfQueryRetriever
+from langchain.chains.query_constructor.base import AttributeInfo
 import lark
 from langchain.schema import Document
 import chromadb
@@ -51,13 +56,18 @@ from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain.storage import InMemoryStore
 import uuid
 from langchain.retrievers import ContextualCompressionRetriever
-from langchain.retrievers.document_compressors import DocumentCompressorPipeline, LLMChainFilter
+from langchain.retrievers.document_compressors import DocumentCompressorPipeline
 from langchain.document_transformers import EmbeddingsRedundantFilter
 from langchain.retrievers.document_compressors import EmbeddingsFilter
 from langchain.callbacks.streaming_stdout_final_only import FinalStreamingStdOutCallbackHandler
 import json
+import requests
 from bs4 import BeautifulSoup
+from pydantic import BaseModel, Field
+from langchain.tools import BaseTool
+from typing import Type, Optional
 from langchain.document_loaders import SeleniumURLLoader
+from langchain.pydantic_v1 import BaseModel, Extra, root_validator
 from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
 from langchain.callbacks import get_openai_callback
 
@@ -185,7 +195,7 @@ class DBStore:
 
     def get_vectorstore(self):
         document_chunks = self.get_pdf_text()
-        #st.write(document_chunks)
+        st.write(document_chunks)
         vector_store = FAISS.from_documents(documents=document_chunks, embedding=self.embeddings)
         #st.write(vector_store)
         return vector_store
@@ -196,19 +206,12 @@ class DBStore:
         
         Returns:
             str: A one-sentence information snippet of the document.
-       """
+pip install selenium        """
         # Get the first chunk of the document
-        pdf_text = self.get_pdf_text()
+        first_chunk = self.get_pdf_text()[0].page_content if self.get_pdf_text() else ""
     
-        if pdf_text:
-            first_chunk = pdf_text[0].page_content if len(pdf_text) > 0 else ""
-            second_chunk = pdf_text[1].page_content if len(pdf_text) > 1 else ""
-            third_chunk = pdf_text[2].page_content if len(pdf_text) > 2 else ""
-            
-            # Extract the first 300 characters from each chunk to form an information snippet
-            info_document = first_chunk[:300] + second_chunk[:300] + third_chunk[:300]
-        else:
-            info_document = ""
+    # Extract the first 100 characters to form an information snippet
+        info_document = first_chunk[:500]  # Limit to 100 characters
         #st.write(info_document)
 
         return info_document
@@ -359,8 +362,6 @@ class BR18_DB:
         self.md_paths = self.load_documents()  # Renamed from pdf_paths to md_paths
         self.embeddings = OpenAIEmbeddings()
         self.pinecone_index_name = "br18"
-        self.br18_parent_store = InMemoryStore()
-        self.id_key = "doc_id" 
         if self.pinecone_index_name not in pinecone.list_indexes():
             pinecone.create_index(self.pinecone_index_name, dimension=1536)
             self.vectorstore = self.create_vectorstore()
@@ -403,57 +404,22 @@ class BR18_DB:
         #st.write(type(md_header_splits[0]))
         
         # Define chunk size and overlap
-        parent_chunk_size = 5000
-        parent_chunk_overlap = 0
+        chunk_size = 1500
+        chunk_overlap = 200
         
         # Initialize RecursiveCharacterTextSplitter
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=parent_chunk_size, chunk_overlap=parent_chunk_overlap
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
         
         # Split the header-split documents into chunks
-        all_parent_splits = text_splitter.split_documents(md_header_splits)
+        all_splits = text_splitter.split_documents(md_header_splits)
+        #st.write(all_splits)
+        # Output for debugging
 
-        for split in all_parent_splits:
-            metadata_str = f"{split.metadata.get('Header 3', '')}\n\n{split.metadata.get('Header 4', '')}"
-            split.page_content = f"{metadata_str}\n\n{split.page_content}"
-
-        return all_parent_splits
+        return all_splits
     
-    def generate_child_splits(self, parent_splits: List[Document]) -> List[Document]:
-        child_chunk_size = 300
-
-        child_text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=child_chunk_size, chunk_overlap=0
-        )
-
-        all_child_splits = []
-        for parent_split in parent_splits:
-            child_splits = child_text_splitter.split_text(parent_split.page_content)
-            first_child_split = Document(
-            page_content=child_splits[0],  # Assuming this is a string
-            metadata=parent_split.metadata  # You can copy the metadata from the parent or set as needed
-            )
-            all_child_splits.append(first_child_split)  # Append only the first child split (assuming it contains the metadata)
-
-
-        return all_child_splits
-
     def process_all_documents(self):
-        all_parent_splits = []  # Local variable to store all parent splits
-        all_child_splits = []  # Local variable to store all child splits
-        
-        for markdown_document in self.md_paths:
-            parent_splits = self.split_and_chunk_text(markdown_document)
-            child_splits = self.generate_child_splits(parent_splits)
-            
-            all_parent_splits.extend(parent_splits)
-            all_child_splits.extend(child_splits)
-
-        st.write(all_parent_splits)
-        st.write(all_child_splits)
-
-        return all_parent_splits, all_child_splits  # Return both lists
         all_processed_splits = []
         for markdown_document in self.md_paths:
             processed_splits = self.split_and_chunk_text(markdown_document)
@@ -462,23 +428,18 @@ class BR18_DB:
         return all_processed_splits
     
     def create_vectorstore(self):
-        all_parent_splits, all_child_splits = self.process_all_documents()
-    
-        parent_doc_ids = [str(uuid.uuid4()) for _ in all_parent_splits]
-        self.br18_parent_store.mset(list(zip(parent_doc_ids, all_parent_splits)))
+        # Use the process_all_documents method to get all the processed splits
+        all_splits = self.process_all_documents()
+        #st.write(all_splits)
 
-        for parent_id, child_split in zip(parent_doc_ids, all_child_splits):
-            child_split.metadata[self.id_key] = parent_id
 
-        # Create and save the vector store to disk
-        br18_vectorstore = Pinecone.from_documents(documents=all_child_splits, embedding=self.embeddings, index_name=self.pinecone_index_name)
-        #st.write(br18_appendix_child_vectorstore)
 
-        for i, doc in enumerate(all_parent_splits):
-            doc.metadata[self.id_key] = parent_doc_ids[i]
+        # Create and save the vector store to cloud
+        br18_vectorstore = Pinecone.from_documents(documents=all_splits, embedding=self.embeddings, index_name=self.pinecone_index_name)
 
         # Store the vector store in the session state
         st.session_state.br18_vectorstore = br18_vectorstore
+        
 
         return br18_vectorstore
     
@@ -578,52 +539,29 @@ class BR18_DB:
         return filtered_docs
 
     def create_retriever(self, query: str):
-        search_type = st.session_state.search_type
-
-        if search_type == "General Search":
-            base_retriever = self.vectorstore.as_retriever(search_kwargs={'k': 5})
-            compression_filter = LLMChainFilter.from_llm(self.llm)
-            base_relevant_docs = base_retriever.get_relevant_documents(query)
-            st.write(base_relevant_docs)
-
-            compression_retriever = ContextualCompressionRetriever(
-            base_compressor=compression_filter, 
-            base_retriever=base_retriever
+        retriever = self.vectorstore.as_retriever(
+        search_kwargs={'k': 20}
         )
 
-            compressed_relevant_docs = compression_retriever.get_relevant_documents(query)
-            st.write(compressed_relevant_docs)
-            #st.write(type(relevant_docs))
+        relevant_docs = retriever.get_relevant_documents(query)
+        #st.write(relevant_docs)
+        #st.write(type(relevant_docs))
 
-            keywords = self.get_keywords(query)
-            #st.write(keywords)
+        keywords = self.get_keywords(query)
+        #st.write(keywords)
 
-            filtered_docs = self.post_filter_documents(keywords, compressed_relevant_docs)
-            st.write(filtered_docs)
-            #st.write(type(filtered_docs[0]))
 
-            if not filtered_docs:
-                non_filtered = compressed_relevant_docs[:5]
-                st.write(non_filtered)
-                return non_filtered
+        filtered_docs = self.post_filter_documents(keywords, relevant_docs)
+        #st.write(filtered_docs)
+        #st.write(type(filtered_docs[0]))
 
-            return filtered_docs
-        
-        if search_type == "Specific Search":
-            specific_retriever = MultiVectorRetriever(
-            vectorstore=self.vectorstore,  # Replace with the child vector store if needed
-            docstore=self.br18_parent_store,  # Use the in-memory parent store
-            id_key=self.id_key  # The key used to match parent and child documents
-        )
-            st.write(specific_retriever)
-            
-            retrieved_child_docs = specific_retriever.vectorstore.similarity_search(query)
-            st.write(retrieved_child_docs)
+        if not filtered_docs:
+            non_filtered = relevant_docs[:5]
+            #st.write(non_filtered)
+            return non_filtered
 
-            retrieved_parent_docs = specific_retriever.get_relevant_documents(query)[:3]
-            st.write(retrieved_parent_docs)
-            return retrieved_parent_docs
-
+        return filtered_docs
+    
     def run(self, query: str):
         prompt_template = """Use the following pieces of context to answer the question at the end. 
         The answer should be as specific as possible and reference clause numbers and their respective subclause. 
@@ -639,17 +577,164 @@ class BR18_DB:
         )
 
         # Retrieve the filtered documents
-        retrieved_docs = self.create_retriever(query)
+        filtered_docs = self.create_retriever(query)
         #st.write(type(filtered_docs[0]))
         #st.write(filtered_docs)
 
         qa_chain = load_qa_chain(self.llm, chain_type="stuff", verbose=True, prompt=PROMPT)
-        output = qa_chain({"input_documents": retrieved_docs, "question": query}, return_only_outputs=True)
+        output = qa_chain({"input_documents": filtered_docs, "question": query}, return_only_outputs=True)
 
-        st.session_state.doc_sources = retrieved_docs
+        st.session_state.doc_sources = filtered_docs
 
         return output
 
+class BR18_Appendix: 
+    def __init__(self, llm, folder_path: str):
+        self.llm = llm
+        self.folder_path = folder_path
+        self.md_paths = self.load_documents()  # Renamed from pdf_paths to md_paths
+        self.embeddings = OpenAIEmbeddings()
+        self.retriever = self.create_vectorstore()
+
+    def load_documents(self):
+        md_paths = list(Path(self.folder_path).rglob("*.md"))
+        documents = []
+        for path in md_paths:
+            loader = TextLoader(str(path))
+            data = loader.load()
+            documents.extend(data)  # Assuming data is a list of Document objects
+        #st.text(documents)
+        return documents
+    
+    def split_and_chunk_text(self, markdown_document: Document):
+        # Extract the markdown text from the Document object
+        markdown_text = markdown_document.page_content
+        #st.write(f"Type of markdown_document: {type(markdown_document)}")
+        #st.markdown(markdown_text)
+        
+        # Define headers to split on
+        headers_to_split_on = [
+            ("#", "Header 1"),
+            ("##", "Header 2"),
+            ("###", "Header 3"),
+            ("####", "Header 4"),
+        ]
+        
+        # Initialize MarkdownHeaderTextSplitter
+        markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
+        #st.write(markdown_splitter)
+        
+        # Split the document by headers
+        md_header_splits = markdown_splitter.split_text(markdown_text)
+        #st.write(md_header_splits)
+        #st.write(type(md_header_splits[0]))
+        
+        # Define chunk size and overlap
+        parent_chunk_size = 3500
+        parent_chunk_overlap = 0
+        
+        # Initialize RecursiveCharacterTextSplitter
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=parent_chunk_size, chunk_overlap=parent_chunk_overlap
+        )
+        
+        # Split the header-split documents into chunks
+        all_parent_splits = text_splitter.split_documents(md_header_splits)
+
+        for split in all_parent_splits:
+            metadata_str = f"{split.metadata.get('Header 3', '')}\n\n{split.metadata.get('Header 4', '')}"
+            split.page_content = f"{metadata_str}\n\n{split.page_content}"
+
+        return all_parent_splits
+    
+    def generate_child_splits(self, parent_splits: List[Document]) -> List[Document]:
+        child_chunk_size = 300
+
+        child_text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=child_chunk_size, chunk_overlap=0
+        )
+
+        all_child_splits = []
+        for parent_split in parent_splits:
+            child_splits = child_text_splitter.split_text(parent_split.page_content)
+            first_child_split = Document(
+            page_content=child_splits[0],  # Assuming this is a string
+            metadata=parent_split.metadata  # You can copy the metadata from the parent or set as needed
+            )
+            all_child_splits.append(first_child_split)  # Append only the first child split (assuming it contains the metadata)
+
+
+        return all_child_splits
+
+    def process_all_documents(self):
+        all_parent_splits = []  # Local variable to store all parent splits
+        all_child_splits = []  # Local variable to store all child splits
+        
+        for markdown_document in self.md_paths:
+            parent_splits = self.split_and_chunk_text(markdown_document)
+            child_splits = self.generate_child_splits(parent_splits)
+            
+            all_parent_splits.extend(parent_splits)
+            all_child_splits.extend(child_splits)
+
+        st.write(all_parent_splits)
+        st.write(all_child_splits)
+
+        return all_parent_splits, all_child_splits  # Return both lists
+    
+    def create_vectorstore(self):
+        all_parent_splits, all_child_splits = self.process_all_documents()
+        
+        id_key = "doc_id" 
+        br18_appendix_parent_store = InMemoryStore()
+        parent_doc_ids = [str(uuid.uuid4()) for _ in all_parent_splits]
+        br18_appendix_parent_store.mset(list(zip(parent_doc_ids, all_parent_splits)))
+
+        for parent_id, child_split in zip(parent_doc_ids, all_child_splits):
+            child_split.metadata[id_key] = parent_id
+
+        # Create and save the vector store to disk
+        br18_appendix_child_vectorstore = FAISS.from_documents(documents=all_child_splits, embedding=self.embeddings)
+        st.write(br18_appendix_child_vectorstore)
+
+        # Store the vector store in the session state
+        st.session_state.br18_appendix_vectorstore = br18_appendix_child_vectorstore
+
+        retriever = MultiVectorRetriever(
+        vectorstore=br18_appendix_child_vectorstore, 
+        docstore=br18_appendix_parent_store,  # Use the in-memory parent store
+        id_key=id_key  # The key used to match parent and child documents
+        )
+        st.write(retriever)
+        st.write(all_child_splits)
+        
+        return retriever
+    
+    def run(self, query: str):
+        relevant_child_docs = self.retriever.vectorstore.similarity_search(query)
+        st.write(relevant_child_docs)
+        parent_docs = self.retriever.get_relevant_documents(query)[:1]
+        st.write(parent_docs)
+
+        prompt_template = """Use the following tables from the BR18 appendix to answer the question at the end. 
+        The answer should be as specific as possible in terms of requirement numbers and value, referencing the appendix and table numbers where the answer originates.  
+        If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+        {context}
+
+        Question: {question}"""
+
+        PROMPT = PromptTemplate(
+            template=prompt_template, input_variables=["context", "question"]
+        )
+
+
+        qa_chain = load_qa_chain(self.llm, chain_type="stuff", verbose=True, prompt=PROMPT)
+        output = qa_chain({"input_documents": parent_docs, "question": query}, return_only_outputs=True)
+
+        st.session_state.doc_sources = parent_docs
+
+        return output
 
 class SummarizationTool():
     def __init__(self, document_chunks):
@@ -705,7 +790,7 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         if data is not None and len(data) > 0:
             soup = BeautifulSoup(data[0].page_content, "html.parser")
             text = soup.get_text()
-            return text[:1000]  # Return first 1000 non-space characters
+            return text[:2000]  # Return first 2000 characters
         return ''
     
     def fetch_and_scrape(self, query: str, num_results: int = 3) -> str:
@@ -723,7 +808,7 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
             scraped_content = self.scrape_content(url)
             texts.append(scraped_content)
         
-        return " ".join(texts)[:3000]   # Return first 2000 characters combined from all URLs
+        return " ".join(texts)[:1000]   # Return first 2000 characters combined from all URLs
 
 class MRKL:
     def __init__(self):
@@ -760,7 +845,7 @@ class MRKL:
             file_name = st.session_state.document_filename
             llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata, filename=file_name)
 
-            #st.write(llm_database.get_description())
+            st.write(llm_database.get_description())
 
             tools.append(
                 Tool(
@@ -774,23 +859,27 @@ class MRKL:
             br18_folder_path = os.path.join(current_directory, "BR18_DB")
             llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)
 
+            appendix_folder_path = os.path.join(current_directory, "BR18_Appendix")
+            llm_br18_appendix = BR18_Appendix(llm=llm, folder_path=appendix_folder_path)
+
             tools.extend([
             Tool(
                 name='BR18_Database',
                 func=llm_br18.run,
-                description="""
-                Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). 
-                Input should be the specific keywords from the user query. Exclude the following common terms and their variations or synonyms especially words such as "building" and "regulation".
-                Use this tool more often than the normal search tool.
-                """
+                description="Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
             ),
+            Tool(
+                name='BR18_Appendix',
+                func=llm_br18_appendix.run,
+                description="Only useful when you need to answer specific questions related to the appendix section of the Danish Building Regulation 18 (BR18). Use this tool when queries explicitly mentions tables or/and appendixes, or asked for specific values or numbers relating to the thermal value, risk classes or/and categories of use."
+            )
             ])
         return tools
 
     def load_agent(self):
         llm = ChatOpenAI(
             temperature=0, 
-            streaming=True,
+            streaming=False,
             model_name="gpt-3.5-turbo",
             )
         
@@ -832,6 +921,7 @@ class MRKL:
             extra_prompt_messages=[MessagesPlaceholder(variable_name=memory_key), reflection_message]
         )
 
+        
         # Agent
         agent = OpenAIFunctionsAgent(llm=llm, tools=self.tools, prompt=prompt)
         
@@ -898,14 +988,6 @@ def main():
         if br18_experiment != st.session_state.br18_exp:
             st.session_state.br18_exp = br18_experiment
             st.session_state.agent = MRKL()
-
-        if br18_experiment:  # If BR18 is enabled
-            search_type = st.radio(
-                "Select Search Type:",
-                options=["General Search", "Specific Search"],
-                index=0, horizontal=True  # Default to "General Search"
-            )
-            st.session_state.search_type = search_type
 
         st.sidebar.title("Upload Document to Database")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
@@ -1015,9 +1097,9 @@ def main():
             result_summary = st.session_state.summary
             st.write(result_summary)
 
-    #with st.expander("Cost Tracking", expanded=True):
-        #total_token = st.session_state.token_count
-        #st.write(total_token)
+    with st.expander("Cost Tracking", expanded=True):
+        total_token = st.session_state.token_count
+        st.write(total_token)
 
     buttons_placeholder = st.container()
     with buttons_placeholder:
