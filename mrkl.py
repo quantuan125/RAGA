@@ -69,6 +69,7 @@ from typing import Type, Optional
 from langchain.document_loaders import SeleniumURLLoader
 from langchain.pydantic_v1 import BaseModel, Extra, root_validator
 from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
+from langchain.callbacks import get_openai_callback
 
 
 langchain.debug = True
@@ -935,7 +936,9 @@ class MRKL:
     def run_agent(self, input, callbacks=[]):
         # Define the logic for processing the user's input
         # For now, let's just use the agent's run method
-        result = self.agent_executor({"input": input}, callbacks=callbacks)
+        with get_openai_callback() as cb:
+            result = self.agent_executor({"input": input}, callbacks=callbacks)
+            st.session_state.token_count += cb.total_tokens
         return result
     
 
@@ -966,6 +969,8 @@ def main():
         st.session_state.history = None
     if 'br18_exp' not in st.session_state:
         st.session_state.br18_exp = False
+    if "token_count" not in st.session_state:
+        st.session_state.token_count = 0
 
     if "agent" not in st.session_state:
         st.session_state.agent = MRKL()
@@ -1091,19 +1096,23 @@ def main():
         else:
                 st.write("No document sources found")
 
-    
-    
     if st.session_state.summary is not None:
         with st.expander("Show Summary"):
             st.subheader("Summarization")
             result_summary = st.session_state.summary
             st.write(result_summary)
 
+    with st.expander("Cost Tracking"):
+        total_token = st.session_state.token_count
+        st.write(f"Total Tokens Used: {total_token}")
 
     buttons_placeholder = st.container()
     with buttons_placeholder:
         #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
         st.button("Clear Chat", key="clear", on_click=reset_chat)
+
+    
+
 
     #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
