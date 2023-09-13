@@ -45,7 +45,6 @@ from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
 from langchain.schema.messages import SystemMessage, BaseMessage
 from langchain.prompts import MessagesPlaceholder
 from langchain.agents import AgentExecutor
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate
 from langchain.schema import HumanMessage, SystemMessage
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain.storage import InMemoryStore
@@ -61,6 +60,8 @@ from langchain.document_loaders import SeleniumURLLoader
 from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
 from langchain.callbacks import get_openai_callback
 import pickle
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema.output_parser import StrOutputParser
 
 langchain.debug = True
 langchain.verbose = True
@@ -174,7 +175,7 @@ class DBStore:
                     },
                 )
                 doc_chunks.append(doc)
-        #st.write(doc_chunks)
+        st.write(doc_chunks)
         return doc_chunks
     
     def get_pdf_text(self):
@@ -392,10 +393,8 @@ class BR18_DB:
         return documents
     
     def split_and_chunk_text(self, markdown_document: Document):
-        # Extract the markdown text from the Document object
+
         markdown_text = markdown_document.page_content
-        #st.write(f"Type of markdown_document: {type(markdown_document)}")
-        #st.markdown(markdown_text)
         
         # Define headers to split on
         headers_to_split_on = [
@@ -405,20 +404,16 @@ class BR18_DB:
             ("####", "Header 4"),
         ]
         
-        # Initialize MarkdownHeaderTextSplitter
         markdown_splitter = MarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
         #st.write(markdown_splitter)
         
-        # Split the document by headers
         md_header_splits = markdown_splitter.split_text(markdown_text)
         #st.write(md_header_splits)
         #st.write(type(md_header_splits[0]))
         
-        # Define chunk size and overlap
-        parent_chunk_size = 3200
+        parent_chunk_size = 3500
         parent_chunk_overlap = 0
         
-        # Initialize RecursiveCharacterTextSplitter
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=parent_chunk_size, chunk_overlap=parent_chunk_overlap
         )
@@ -440,7 +435,42 @@ class BR18_DB:
 
         return all_parent_splits
     
-    def generate_child_splits(self, parent_splits: List[Document]) -> List[Document]:
+    def save_summaries(self, summaries: List[str]):
+        """Save the generated summaries to a JSON file."""
+        current_directory = os.getcwd()
+        save_path = os.path.join(current_directory, 'savesummary', 'br18_summaries.json')
+        with open(save_path, 'w') as f:
+            json.dump(summaries, f)
+
+    def load_summaries(self) -> List[str]:
+        """Load summaries from a JSON file if it exists."""
+        current_directory = os.getcwd()
+        load_path = os.path.join(current_directory, 'savesummary', 'br18_summaries.json')
+        if os.path.exists(load_path):
+            with open(load_path, 'r') as f:
+                summaries = json.load(f)
+            return summaries
+        else:
+            return None  # or raise an exception, or generate new summaries
+
+    def generate_summaries(self, parent_splits: List[Document]) -> List[str]:
+        loaded_summaries = self.load_summaries()
+        if loaded_summaries is not None:
+            return loaded_summaries
+        
+        chain = (
+            {"doc": lambda x: x.page_content}
+            | ChatPromptTemplate.from_template("Summarize the following document:\n\n{doc}")
+            | ChatOpenAI(max_retries=0)
+            | StrOutputParser()
+        )
+        summaries = chain.batch(parent_splits, {"max_concurrency": 5})
+
+        self.save_summaries(summaries)
+        
+        return summaries
+    
+    def generate_child_splits(self, parent_splits: List[Document], summaries: List[str]) -> List[Document]:
         child_chunk_size = 300
 
         child_text_splitter = RecursiveCharacterTextSplitter(
@@ -448,16 +478,19 @@ class BR18_DB:
         )
 
         all_child_splits = []
-        for parent_split in parent_splits:
+        for i, parent_split in enumerate(parent_splits):
             child_splits = child_text_splitter.split_text(parent_split.page_content)
 
             new_metadata = dict(parent_split.metadata)
-
             new_metadata['type'] = 'children'
 
+            summary_with_prefix = f"Summary: {summaries[i]}"
+
+            first_child_content = f"{child_splits[0]}\n\n{summary_with_prefix}"
+
             first_child_split = Document(
-            page_content=child_splits[0],  # Assuming this is a string
-            metadata=new_metadata  # You can copy the metadata from the parent or set as needed
+            page_content=first_child_content,
+            metadata=new_metadata
             )
 
             all_child_splits.append(first_child_split)  # Append only the first child split (assuming it contains the metadata)
@@ -471,10 +504,10 @@ class BR18_DB:
         
         for markdown_document in self.md_paths:
             parent_splits = self.split_and_chunk_text(markdown_document)
-            child_splits = self.generate_child_splits(parent_splits)
-            
             all_parent_splits.extend(parent_splits)
-            all_child_splits.extend(child_splits)
+
+        summaries = self.generate_summaries(all_parent_splits)
+        all_child_splits = self.generate_child_splits(all_parent_splits, summaries)
 
         st.write(all_parent_splits)
         st.write(all_child_splits)
@@ -497,18 +530,16 @@ class BR18_DB:
         for i, doc in enumerate(all_parent_splits):
             doc.metadata[self.id_key] = parent_doc_ids[i]
 
-        br18_vectorstore.add_documents(all_parent_splits)
         # Store the vector store in the session state
         st.session_state.br18_vectorstore = br18_vectorstore
 
         return br18_vectorstore
 
-
     def create_retriever(self, query: str):
         search_type = st.session_state.search_type
 
-        if search_type == "General Search":
-            # Initialize retriever for general search, filtering by the presence of the "text" metadata
+        if search_type == "By Content":
+            # Initialize retriever for By Content, filtering by the presence of the "text" metadata
             general_retriever = MultiVectorRetriever(
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
@@ -518,6 +549,8 @@ class BR18_DB:
 
             parent_docs = general_retriever.vectorstore.similarity_search(query, filter={'type': 'parents'}, k = 5)
             st.write(parent_docs)
+
+            st.session_state.doc_sources = parent_docs
 
             embeddings = self.embeddings
         
@@ -559,25 +592,27 @@ class BR18_DB:
             
             return retrieved_parent_docs
         
-        elif search_type == "Specific Search":
-        # Initialize retriever for specific search, filtering by the absence of the "text" metadata
+        elif search_type == "By Headers":
+        # Initialize retriever for By Headers, filtering by the absence of the "text" metadata
             specific_retriever = MultiVectorRetriever(
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={'filter': {'type': 'children'}, "k":2}
+                search_kwargs={'filter': {'type': 'children'}, "k": 3}
             )
 
-            child_docs = specific_retriever.vectorstore.similarity_search(query,filter={'type': 'children'}, k = 2)
+            child_docs = specific_retriever.vectorstore.similarity_search(query,filter={'type': 'children'}, k = 3)
             st.write(child_docs)
 
             # Retrieve child documents that match the query
             
             embeddings = self.embeddings
-            embeddings_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.75)
+            embeddings_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.82)
             compression_retriever = ContextualCompressionRetriever(base_compressor=embeddings_filter, base_retriever=specific_retriever)
 
             retrieved_child_docs = compression_retriever.get_relevant_documents(query)
+
+            st.session_state.doc_sources = retrieved_child_docs
 
             # Display retrieved child documents
             display_list = []
@@ -615,7 +650,6 @@ class BR18_DB:
         qa_chain = load_qa_chain(self.llm, chain_type="stuff", verbose=True, prompt=PROMPT)
         output = qa_chain({"input_documents": retrieved_docs, "question": query}, return_only_outputs=True)
 
-        st.session_state.doc_sources = retrieved_docs
 
         return output
 
@@ -868,8 +902,8 @@ def main():
         if br18_experiment:  # If BR18 is enabled
             search_type = st.radio(
                 "Select Search Type:",
-                options=["General Search", "Specific Search"],
-                index=0, horizontal=True  # Default to "General Search"
+                options=["By Content", "By Headers"],
+                index=0, horizontal=True  # Default to "By Content"
             )
             st.session_state.search_type = search_type
 
@@ -972,7 +1006,7 @@ def main():
                         st.subheader("Metadata:")
 
                         # Display only relevant metadata keys
-                        relevant_keys = ["Header 3", "Header 4"]
+                        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author"]
                         for key in relevant_keys:
                             value = document.metadata.get(key, 'N/A')
                             if value != 'N/A':

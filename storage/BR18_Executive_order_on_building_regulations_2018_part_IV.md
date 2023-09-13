@@ -1,13 +1,13 @@
 ﻿## Part IV - Sanctions and commencement
 
-#### Chapter 36 - Sanctions
+### Chapter 36 - Sanctions
 
 564. Persons who violate provisions stipulated in the Building Regulations will be fined. This provision
 also applies to building work which may be carried out without application for a building permit.
 (2) Companies, etc. (legal entities) may be held criminally liable under the rules of Chapter 5 of the
 Danish Penal Code for violations stated in (1), see s. 30(5) of the Danish Building Act.
 
-#### Chapter 37 - Commencement
+### Chapter 37 - Commencement
 
 565. This Executive Order enters into force on 1 January 2018.
 (2) Executive Order No. 1028 of 30 June 2016 on publication of Building Regulations 2015 (BR15) are
