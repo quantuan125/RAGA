@@ -2,12 +2,10 @@ import os
 import re
 from dotenv import load_dotenv
 from langchain.chat_models import ChatOpenAI
-from langchain.llms import OpenAI
-from langchain.agents import load_tools, initialize_agent, AgentType, Tool, AgentExecutor, ConversationalAgent, ZeroShotAgent
+from langchain.agents import Tool, AgentExecutor
 from langchain.callbacks import StreamlitCallbackHandler
-from langchain.tools import DuckDuckGoSearchRun
 from langchain.chains import LLMMathChain
-from langchain.chains import LLMChain, StuffDocumentsChain
+from langchain.chains import LLMChain
 import streamlit as st
 import langchain
 from langchain.utilities import SerpAPIWrapper, GoogleSearchAPIWrapper
@@ -15,7 +13,6 @@ from langchain.chains import RetrievalQA
 from langchain.text_splitter import RecursiveCharacterTextSplitter, MarkdownHeaderTextSplitter, CharacterTextSplitter
 from langchain.vectorstores import FAISS, Chroma, Pinecone
 from langchain.embeddings import OpenAIEmbeddings
-from PyPDF2 import PdfReader
 import tempfile
 import pypdf
 import openai
@@ -26,20 +23,11 @@ from langchain.chains.summarize import load_summarize_chain
 from langchain import PromptTemplate
 import lark
 from langchain.schema import Document
-import chromadb
-from chromadb.config import Settings
-import  streamlit_toggle as tog
 import langchain
-from langchain.callbacks.manager import CallbackManagerForRetrieverRun
-from typing import List, Set
 import pinecone
-from langchain.chains.qa_with_sources import load_qa_with_sources_chain
 from langchain.chains.question_answering import load_qa_chain
 from typing import List, Dict, Any 
-from langchain.chains.conversational_retrieval.prompts import CONDENSE_QUESTION_PROMPT, QA_PROMPT
 from langchain.prompts.prompt import PromptTemplate
-from langchain.chains.question_answering import map_reduce_prompt, stuff_prompt
-from langchain.agents.agent_toolkits import create_conversational_retrieval_agent
 from langchain.agents.openai_functions_agent.agent_token_buffer_memory import AgentTokenBufferMemory
 from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
 from langchain.schema.messages import SystemMessage, BaseMessage
@@ -53,7 +41,6 @@ from langchain.retrievers import ContextualCompressionRetriever
 from langchain.retrievers.document_compressors import DocumentCompressorPipeline, LLMChainFilter
 from langchain.document_transformers import EmbeddingsRedundantFilter
 from langchain.retrievers.document_compressors import EmbeddingsFilter
-from langchain.callbacks.streaming_stdout_final_only import FinalStreamingStdOutCallbackHandler
 import json
 from bs4 import BeautifulSoup
 from langchain.document_loaders import SeleniumURLLoader
@@ -411,7 +398,7 @@ class BR18_DB:
         #st.write(md_header_splits)
         #st.write(type(md_header_splits[0]))
         
-        parent_chunk_size = 3500
+        parent_chunk_size = 5000
         parent_chunk_overlap = 0
         
         text_splitter = RecursiveCharacterTextSplitter(
@@ -461,10 +448,10 @@ class BR18_DB:
         chain = (
             {"doc": lambda x: x.page_content}
             | ChatPromptTemplate.from_template("Summarize the following document:\n\n{doc}")
-            | ChatOpenAI(max_retries=0)
+            | ChatOpenAI(max_retries=3)
             | StrOutputParser()
         )
-        summaries = chain.batch(parent_splits, {"max_concurrency": 5})
+        summaries = chain.batch(parent_splits, {"max_concurrency": 4})
 
         self.save_summaries(summaries)
         
@@ -544,10 +531,10 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={'filter': {'type': 'parents'}, "k":5}
+                search_kwargs={"k": 5}
             )
 
-            parent_docs = general_retriever.vectorstore.similarity_search(query, filter={'type': 'parents'}, k = 5)
+            parent_docs = general_retriever.vectorstore.similarity_search(query, k = 5)
             st.write(parent_docs)
 
             st.session_state.doc_sources = parent_docs
@@ -598,17 +585,20 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={'filter': {'type': 'children'}, "k": 3}
+                search_kwargs={"k": 4}
             )
 
-            child_docs = specific_retriever.vectorstore.similarity_search(query,filter={'type': 'children'}, k = 3)
+            child_docs = specific_retriever.vectorstore.similarity_search(query, k = 4)
             st.write(child_docs)
 
             # Retrieve child documents that match the query
             
             embeddings = self.embeddings
-            embeddings_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.82)
-            compression_retriever = ContextualCompressionRetriever(base_compressor=embeddings_filter, base_retriever=specific_retriever)
+            embedding_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.75)
+            llm_filter = LLMChainFilter.from_llm(self.llm)
+
+            
+            compression_retriever = ContextualCompressionRetriever(base_compressor=embedding_filter, base_retriever=specific_retriever)
 
             retrieved_child_docs = compression_retriever.get_relevant_documents(query)
 
@@ -630,13 +620,23 @@ class BR18_DB:
         
     def run(self, query: str):
         prompt_template = """Use the following pieces of context to answer the question at the end. 
-        The answer should be as specific as possible and reference clause numbers and their respective subclause. 
+        The answer should be as specific as possible to a chapter and section where clause numbers and their respective subclause are referenced. 
         Make sure to mention requirement numbers and specific integer values where relevant.
         If you don't know the answer, just say that you don't know, don't try to make up an answer.
 
         {context}
 
-        Question: {question}"""
+        Question: {question}
+        
+        EXAMPLE: 
+        The building regulation regarding stairs is outlined in Chapter 2 - Access, specifically in Section - Stairs:
+
+        Width: Stairs in shared access routes must have a minimum free width of 1.0 meter. (clause 57.1)
+
+        Headroom: Stairs must have a minimum free headroom of 2.10 meters. (clause 57.1)
+
+        Gradient: The gradient of the stairs must not exceed 0.18 meters. (clause 57.2)
+        """
 
         PROMPT = PromptTemplate(
             template=prompt_template, input_variables=["context", "question"]
@@ -700,21 +700,28 @@ class SummarizationTool():
 
 class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
-    def scrape_content(self, url: str) -> str:
+    def clean_text(self, text: str) -> str:
+        # Remove extra whitespaces and line breaks
+        text = ' '.join(text.split())
+        return text
+    
+    def scrape_content(self, url: str) -> dict:
         loader = SeleniumURLLoader(urls=[url])
         data = loader.load()
         
         if data is not None and len(data) > 0:
             soup = BeautifulSoup(data[0].page_content, "html.parser")
             text = soup.get_text()
-            return text[:1000]  # Return first 1000 non-space characters
-        return ''
+            cleaned_text = self.clean_text(text)
+            return {'url': url, 'content': cleaned_text[:1000]}  # Return first 1000 non-space characters
+        return {'url': url, 'content': ''}
     
     def fetch_and_scrape(self, query: str, num_results: int = 3) -> str:
         # Step 1: Fetch search results metadata
         metadata_results = self.results(query, num_results)
+        
         if len(metadata_results) == 0:
-            return "No good Google Search Result was found"
+            return '[URL: None, Content: No good Google Search Result was found]'
         
         # Step 2: Extract URLs
         urls = [result.get("link", "") for result in metadata_results if "link" in result]
@@ -723,9 +730,10 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         texts = []
         for url in urls:
             scraped_content = self.scrape_content(url)
-            texts.append(scraped_content)
+            formatted_text = f"[URL: {scraped_content['url']}, Content: {scraped_content['content']}]"
+            texts.append(formatted_text)
         
-        return " ".join(texts)[:3000]   # Return first 2000 characters combined from all URLs
+        return " ".join(texts)[:3000]
 
 class MRKL:
     def __init__(self):
@@ -781,7 +789,9 @@ class MRKL:
                 name='BR18_Database',
                 func=llm_br18.run,
                 description="""
-                Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
+                Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). 
+                Input should be the specific keywords from the user query. Exclude the following common terms and their variations or synonyms especially words such as "building" and "regulation".
+                Use this tool more often than the normal search tool.
                 """
             ),
             ])
@@ -808,9 +818,10 @@ class MRKL:
         Unless otherwise explicitly stated, the user queries are about the context given.
 
         Your primary objective is to provide responses that:
-        1. Offer an overview of the topic.
-        2. List key points or clauses in a bullet-point or numbered list format.
-        3. Reflect back to the user's question and give a concise conclusion.
+        1. Offer an overview of the topic, referencing the chapter and the section if relevant
+        2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
+        3. Always match or exceed the details of the tool's output text in your answers. 
+        4. Reflect back to the user's question and give a concise conclusion.
         
         You must maintain a professional and helpful demeanor in all interactions.
         """
@@ -820,7 +831,7 @@ class MRKL:
 
         reflection_message_content = """
         Reminder: 
-        Always try all your tools to find the right answer before saying 'I don't know,' with the search tool as your last resort.
+        Always try all your tools to find the right answer with the search tool as your last resort.
         Always self-reflect your answer based on the user's query and follows the list of response objective. 
         """
 
