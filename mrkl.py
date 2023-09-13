@@ -15,7 +15,6 @@ from langchain.vectorstores import FAISS, Chroma, Pinecone
 from langchain.embeddings import OpenAIEmbeddings
 import tempfile
 import pypdf
-import openai
 from pathlib import Path
 from langchain.docstore.document import Document
 from langchain.document_loaders import TextLoader
