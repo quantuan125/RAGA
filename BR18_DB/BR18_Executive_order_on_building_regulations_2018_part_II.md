@@ -1900,10 +1900,7 @@ DS/EN 1992- 1 - 1 DK NA.
 3) DS/EN 1992-3, Concrete structures for storage of liquids and powders with DS/EN 1992-3 DK NA.
 4) DS/EN 206-1 Concrete, specification, properties, manufacture and compliance and DS 2426
 Concrete - Materials - Regulations for use of DS/EN 206 in Denmark.
-5) DS/EN 1520 Prefabricated reinforced sections of aerated concrete with light aggregates and an open
-
-
-structure with load-bearing or non-load-bearing reinforcement with DS/EN 1520 DK NA for structures
+5) DS/EN 1520 Prefabricated reinforced sections of aerated concrete with light aggregates and an open structure with load-bearing or non-load-bearing reinforcement with DS/EN 1520 DK NA for structures
 in aerated concrete with light aggregates.
 6) DS/EN 12602. Prefabricated reinforced components of autoclave-treated cellular concrete with
 DS/EN 12602 DK NA for structures of autoclave-treated cellular concrete.
@@ -2047,8 +2044,6 @@ artificial climbing walls with safety attachment points.
 boulder structures.
 3) DS/EN 12572-3 Artificial climbing walls _–_ Part 3: Safety requirements and testing methods for
 climbing grips.
-
-
 363. Outdoor exercise equipment must be planned and erected in accordance with DS/EN 16630
 Permanently installed outdoor fitness equipment _–_ Safety requirements and testing methods.
 364. Exercise equipment which is also used as playground equipment must be planned to ensure that the
@@ -2139,15 +2134,11 @@ electric lighting with due consideration of the use.
 
 #### View of the surroundings
 
-37 8. Working rooms, living rooms, teaching rooms, etc must be equipped with windows which provide
-a view of the surroundings. Windows and sun screening must be planned and implemented to ensure a view
-to the surroundings for a satisfactory part of the usage time.
+378. Working rooms, living rooms, teaching rooms, etc must be equipped with windows which provide a view of the surroundings. Windows and sun screening must be planned and implemented to ensure a view to the surroundings for a satisfactory part of the usage time.
 
 #### Daylight
 
-379. Work rooms, living spaces in institutions, teaching rooms, dining rooms, in the following referred
-to as working rooms, etc. and living rooms and kitchens must have access to daylight to an extent which
-ensures sufficient lighting of the rooms.
+379. Work rooms, living spaces in institutions, teaching rooms, dining rooms, in the following referred to as working rooms, etc. and living rooms and kitchens must have access to daylight to an extent which ensures sufficient lighting of the rooms.
 (2) Sufficient access to daylight may be documented by a glass surface without shadowing effect
 equivalent of minimum 10 per cent of the relevant floor area. The glass area stated must be adjusted for any
 shadows in the surroundings, reduced light transmittance, etc. as stated in the Guidelines of Transport,

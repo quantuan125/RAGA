@@ -61,6 +61,8 @@ from langchain.document_loaders import SeleniumURLLoader
 from langchain.memory.chat_message_histories import StreamlitChatMessageHistory
 from langchain.callbacks import get_openai_callback
 import pickle
+from CustomClass.custom import CustomMultiVectorRetriever
+
 
 langchain.debug = True
 langchain.verbose = True
@@ -415,7 +417,7 @@ class BR18_DB:
         #st.write(type(md_header_splits[0]))
         
         # Define chunk size and overlap
-        parent_chunk_size = 3200
+        parent_chunk_size = 3000
         parent_chunk_overlap = 0
         
         # Initialize RecursiveCharacterTextSplitter
@@ -427,14 +429,7 @@ class BR18_DB:
         all_parent_splits = text_splitter.split_documents(md_header_splits)
 
         for split in all_parent_splits:
-            header_3 = split.metadata.get('Header 3', '')
-            header_4 = split.metadata.get('Header 4', '')
-            
-            # Prepend "Section:" to Header 4 if it exists
-            if header_4:
-                header_4 = f"Section: {header_4}"
-
-            metadata_str = f"{header_3}\n\n{header_4}"
+            metadata_str = f"{split.metadata.get('Header 3', '')}\n\n{split.metadata.get('Header 4', '')}"
             split.page_content = f"{metadata_str}\n\n{split.page_content}"
             split.metadata['type'] = 'parents'
 
@@ -502,7 +497,101 @@ class BR18_DB:
         st.session_state.br18_vectorstore = br18_vectorstore
 
         return br18_vectorstore
+    
+    def get_keywords(self, query: str) -> list:
+        # Define the prompt template
+        prompt_template = """
+        The user is searching for specific information within a set of documents about building regulation.
+        Your task is to list only the specific keywords from the following user query: {query}
 
+        Please adhere to the following guidelines: 
+        - Interpret intent and correct typos.
+        - Include both singular and plural forms.
+        - Consider formal hyphenations and compound words.
+        Exclude the following common terms and their variations or synonyms especially for these words: 
+        - "building", "buildings", "construction", "constructions"
+        - "regulation", "regulations", "requirement", "regulatory", "requirements"
+
+
+        Example 1: 
+        Query: "What is the building regulation regarding stairs"
+        Answer: "stair, stairs"
+
+        Example 2: 
+        Query: "How is the law applied to ventilation in residential building?"
+        Answer: "ventionlation, residential"
+
+        Example 3: 
+        Query: "List the regulatory requirement regarding fire safety"
+        Answer: "fire safety"
+
+        Example 4:
+        Query: "What are the regulations regarding noise in non residential building?"
+        Answer: "noise, non-residential"
+        """
+
+        llm_chain = LLMChain(
+            llm=self.llm,
+            prompt=PromptTemplate.from_template(prompt_template)
+        )
+        # Extract keywords from the query
+        keywords_str = llm_chain.predict(query=query)
+        # Convert the keywords string into a list
+        keywords = keywords_str.split(", ")
+
+        return keywords
+
+    def post_filter_documents(self, keywords: List[str], source_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        filtered_docs = []
+        header_4_matched_docs = []
+        header_3_matched_docs = []
+
+        for doc in source_docs:
+            headers = doc.metadata
+            #st.write(f"Current Document Metadata: {headers}")
+
+            # Check if Header 4 exists
+            header_4_exists = 'Header 4' in headers
+            #st.write(f"Does Header 4 Exist?: {header_4_exists}")
+
+            header_3_content = headers.get('Header 3', "").lower()
+            header_4_content = headers.get('Header 4', "").lower()
+
+            #st.write(f"Header 3 Content: {header_3_content}")
+            #st.write(f"Header 4 Content: {header_4_content}")
+
+            header_3_matched_keywords = set()
+            header_4_matched_keywords = set()
+
+            for keyword in keywords:
+                keyword_lower = keyword.lower()
+                #st.write(f"Checking Keyword: {keyword_lower}")
+
+                # Check for matches in Header 4 only if it exists
+                if header_4_exists:
+                    if keyword_lower in header_4_content:
+                        #st.write("Keyword matches in Header 4.")
+                        header_4_matched_keywords.add(keyword_lower)
+                else:
+                    # If Header 4 doesn't exist, check for matches in Header 3
+                    if keyword_lower in header_3_content:
+                        #st.write("Keyword matches in Header 3.")
+                        header_3_matched_keywords.add(keyword_lower)
+
+            #st.write(f"Matched Keywords in Header 3: {header_3_matched_keywords}")
+            #st.write(f"Matched Keywords in Header 4: {header_4_matched_keywords}")
+
+            # Determine whether to add the document to the filtered list
+            if header_4_exists and header_4_matched_keywords:
+                #st.write("Document added based on Header 4 matches.")
+                header_4_matched_docs.append(doc)
+            elif not header_4_exists and header_3_matched_keywords:
+                #st.write("Document added based on Header 3 matches.")
+                header_3_matched_docs.append(doc)
+
+            filtered_docs = header_4_matched_docs + header_3_matched_docs
+
+        return filtered_docs
 
     def create_retriever(self, query: str):
         search_type = st.session_state.search_type
@@ -513,46 +602,22 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={'filter': {'type': 'parents'}, "k":5}
+                search_kwargs={'filter': {'type': 'parents'}}
             )
 
-            parent_docs = general_retriever.vectorstore.similarity_search(query, filter={'type': 'parents'}, k = 5)
+            parent_docs = general_retriever.vectorstore.similarity_search(query, filter={'type': 'parents'})
             st.write(parent_docs)
 
-            embeddings = self.embeddings
-        
-            # Initialize Redundant Filter
-            redundant_filter = EmbeddingsRedundantFilter(embeddings=embeddings)
-            
-            # Initialize Relevant Filter
-            relevant_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.75, k = 15)
-            #st.write(relevant_filter)
-            
-            # Initialize Text Splitter
-            splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50, separator=". ")
-            
-            # Create Compressor Pipeline
-            pipeline_compressor = DocumentCompressorPipeline(
-                transformers=[splitter, redundant_filter, relevant_filter]
-            )
-            
-            # Initialize Contextual Compression Retriever
-            contextual_general_retriever = ContextualCompressionRetriever(
-                base_compressor=pipeline_compressor, 
-                base_retriever=general_retriever
-        )
-        
+
             # Retrieve parent documents that match the query
-            retrieved_parent_docs = contextual_general_retriever.get_relevant_documents(query)
+            retrieved_parent_docs = general_retriever.get_relevant_documents(query)
             
             # Display retrieved parent documents
             display_list = []
             for doc in retrieved_parent_docs:
                 display_dict = {
                     "Page Content": doc.page_content,
-                    "Doc ID": doc.metadata.get('doc_id', 'N/A'),
-                    "Header 3": doc.metadata.get('Header 3', 'N/A'),
-                    "Header 4": doc.metadata.get('Header 4', 'N/A'),
+                    "Doc ID": doc.metadata.get('doc_id', 'N/A')
                 }
                 display_list.append(display_dict)
             st.write(display_list)
@@ -565,28 +630,27 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={'filter': {'type': 'children'}, "k":2}
+                search_kwargs={'filter': {'type': 'children'}}
             )
 
-            child_docs = specific_retriever.vectorstore.similarity_search(query,filter={'type': 'children'}, k = 2)
+            child_docs = specific_retriever.vectorstore.similarity_search_with_relevance_scores(
+            query,
+            filter={'type': 'children'},
+            k=3,  
+            score_threshold=0.7  
+            )
             st.write(child_docs)
 
             # Retrieve child documents that match the query
+            retrieved_child_docs = specific_retriever.get_relevant_documents(query)
+            #st.write(retrieved_child_docs)
             
-            embeddings = self.embeddings
-            embeddings_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.75)
-            compression_retriever = ContextualCompressionRetriever(base_compressor=embeddings_filter, base_retriever=specific_retriever)
-
-            retrieved_child_docs = compression_retriever.get_relevant_documents(query)
-
             # Display retrieved child documents
             display_list = []
             for doc in retrieved_child_docs:
                 display_dict = {
                     "Page Content": doc.page_content,
-                    "Doc ID": doc.metadata.get('doc_id', 'N/A'),
-                    "Header 3": doc.metadata.get('Header 3', 'N/A'),
-                    "Header 4": doc.metadata.get('Header 4', 'N/A'),
+                    "Doc ID": doc.metadata.get('doc_id', 'N/A')
                 }
                 display_list.append(display_dict)
             st.write(display_list)
@@ -747,7 +811,9 @@ class MRKL:
                 name='BR18_Database',
                 func=llm_br18.run,
                 description="""
-                Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). Input should be a fully formed question. Use this tool more often than the normal search tool"
+                Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). 
+                Input should be the specific keywords from the user query. Exclude the following common terms and their variations or synonyms especially words such as "building" and "regulation".
+                Use this tool more often than the normal search tool.
                 """
             ),
             ])
@@ -966,19 +1032,14 @@ def main():
         if len(st.session_state.doc_sources) != 0:
 
             for document in st.session_state.doc_sources:
-                        st.divider()
-                        st.subheader("Source Content:")
-                        st.write(document.page_content)
-                        st.subheader("Metadata:")
-
-                        # Display only relevant metadata keys
-                        relevant_keys = ["Header 3", "Header 4"]
-                        for key in relevant_keys:
-                            value = document.metadata.get(key, 'N/A')
-                            if value != 'N/A':
-                                st.write(f"{key}: {value}")
+                st.divider()
+                st.subheader("Source Content:")
+                st.write(document.page_content)
+                st.subheader("Metadata:")
+                for key, value in document.metadata.items():
+                    st.write(f"{key}: {value}")
         else:
-            st.write("No document sources found")
+                st.write("No document sources found")
 
     if st.session_state.summary is not None:
         with st.expander("Show Summary"):
