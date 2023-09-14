@@ -524,8 +524,8 @@ class BR18_DB:
     def create_retriever(self, query: str):
         search_type = st.session_state.search_type
 
-        if search_type == "By Content":
-            # Initialize retriever for By Content, filtering by the presence of the "text" metadata
+        if search_type == "By Context":
+            # Initialize retriever for By Context, filtering by the presence of the "text" metadata
             general_retriever = MultiVectorRetriever(
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
@@ -584,10 +584,10 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={"k": 4}
+                search_kwargs={"k": 3}
             )
 
-            child_docs = specific_retriever.vectorstore.similarity_search(query, k = 4)
+            child_docs = specific_retriever.vectorstore.similarity_search(query, k = 3)
             st.write(child_docs)
 
             # Retrieve child documents that match the query
@@ -912,8 +912,8 @@ def main():
         if br18_experiment:  # If BR18 is enabled
             search_type = st.radio(
                 "Select Search Type:",
-                options=["By Content", "By Headers"],
-                index=0, horizontal=True  # Default to "By Content"
+                options=["By Headers", "By Context"],
+                index=0, horizontal=True  # Default to "By Context"
             )
             st.session_state.search_type = search_type
 
