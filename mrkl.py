@@ -52,6 +52,8 @@ from langchain.schema.output_parser import StrOutputParser
 langchain.debug = True
 langchain.verbose = True
 
+
+
 def on_selectbox_change():
     st.session_state.show_info = True
 
@@ -1040,7 +1042,6 @@ def main():
         st.button("Clear Chat", key="clear", on_click=reset_chat)
 
     
-
 
     #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
