@@ -163,7 +163,7 @@ class DBStore:
                     },
                 )
                 doc_chunks.append(doc)
-        st.write(doc_chunks)
+        #st.write(doc_chunks)
         return doc_chunks
     
     def get_pdf_text(self):
@@ -497,8 +497,8 @@ class BR18_DB:
         summaries = self.generate_summaries(all_parent_splits)
         all_child_splits = self.generate_child_splits(all_parent_splits, summaries)
 
-        st.write(all_parent_splits)
-        st.write(all_child_splits)
+        #st.write(all_parent_splits)
+        #st.write(all_child_splits)
 
         return all_parent_splits, all_child_splits  # Return both lists
     
