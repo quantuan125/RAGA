@@ -322,7 +322,7 @@ class DatabaseTool:
             "Page Content": doc.page_content,
             }
             compressed_docs_list.append(doc_info)
-        st.write(compressed_docs_list)
+        #st.write(compressed_docs_list)
         
         base_retriever=self.get_base_retriever()
         initial_retrieved = base_retriever.get_relevant_documents(query)
@@ -534,7 +534,7 @@ class BR18_DB:
             )
 
             parent_docs = general_retriever.vectorstore.similarity_search(query, k = 5)
-            st.write(parent_docs)
+            #st.write(parent_docs)
 
             st.session_state.doc_sources = parent_docs
 
@@ -574,7 +574,7 @@ class BR18_DB:
                     "Header 4": doc.metadata.get('Header 4', 'N/A'),
                 }
                 display_list.append(display_dict)
-            st.write(display_list)
+            #st.write(display_list)
             
             return retrieved_parent_docs
         
@@ -588,13 +588,13 @@ class BR18_DB:
             )
 
             child_docs = specific_retriever.vectorstore.similarity_search(query, k = 3)
-            st.write(child_docs)
+            #st.write(child_docs)
 
             # Retrieve child documents that match the query
             
             embeddings = self.embeddings
             embedding_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.75)
-            llm_filter = LLMChainFilter.from_llm(self.llm)
+            #llm_filter = LLMChainFilter.from_llm(self.llm)
 
             
             compression_retriever = ContextualCompressionRetriever(base_compressor=embedding_filter, base_retriever=specific_retriever)
@@ -613,7 +613,7 @@ class BR18_DB:
                     "Header 4": doc.metadata.get('Header 4', 'N/A'),
                 }
                 display_list.append(display_dict)
-            st.write(display_list)
+            #st.write(display_list)
             
             return retrieved_child_docs
         
@@ -1044,11 +1044,10 @@ def main():
 
     #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
-    st.write(st.session_state.vector_store)
-    st.write(st.session_state.br18_vectorstore)
+    #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
-    st.write(st.session_state.agent)
+    #st.write(st.session_state.agent)
     #st.write(st.session_state.result)
 
 
