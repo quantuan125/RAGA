@@ -1,5 +1,8 @@
 beautifulsoup4==4.12.2
+<<<<<<< HEAD
 chromadb==0.4.4
+=======
+>>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 langchain==0.0.288
 lark==1.1.7
 openai==0.27.8
@@ -9,10 +12,19 @@ pypdf==3.16.0
 PyPDF2==3.0.1
 python-dotenv==1.0.0
 Requests==2.31.0
+<<<<<<< HEAD
 streamlit==1.25.0
 uuid
 json
 pickle
 tempfile 
 dotenv
+=======
+streamlit==1.26.0
+google-api-python-client
+openai
+tiktoken
+faiss-cpu
+
+>>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 
