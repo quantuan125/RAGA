@@ -1044,7 +1044,7 @@ def main():
 
     #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
-    #st.write(st.session_state.vector_store)
+    st.write(st.session_state.vector_store)
     st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
