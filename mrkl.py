@@ -904,7 +904,7 @@ def main():
             st.session_state.openai = openai_api_key
             os.environ["OPENAI_API_KEY"] = openai_api_key
             st.write("API key has entered")
-
+    
     with st.sidebar:
         br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
         if br18_experiment != st.session_state.br18_exp:
