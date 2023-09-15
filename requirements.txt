@@ -8,10 +8,10 @@ pypdf==3.16.0
 PyPDF2==3.0.1
 python-dotenv==1.0.0
 Requests==2.31.0
-streamlit==1.26.0
+streamlit==1.25.0
 google-api-python-client
 openai
 tiktoken
 faiss-cpu
-
+selenium==4.12.0 
 

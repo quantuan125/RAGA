@@ -738,38 +738,42 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
 class MRKL:
     def __init__(self):
+        self.llm = ChatOpenAI(
+        temperature=0, 
+        streaming=True,
+        model_name="gpt-3.5-turbo",
+        )
         self.tools = self.load_tools()
         self.agent_executor, self.memory = self.load_agent()
 
     def load_tools(self):
-        # Load tools
-        llm = ChatOpenAI(
-            temperature=0, 
-            streaming=True,
-            model_name="gpt-3.5-turbo"
-            )
-        llm_math = LLMMathChain(llm=llm)
-        llm_search = CustomGoogleSearchAPIWrapper()
-
         current_directory = os.getcwd()
+        # Load tools
+        tools = []
 
-        tools = [
-            Tool(
-                name="Google_Search",
-                func=llm_search.fetch_and_scrape,
-                description="Useful when you cannot find a clear answer after looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
-            ),
-            Tool(
-                name='Calculator',
-                func=llm_math.run,
-                description='Useful for when you need to answer questions about math.'
-            ),
-        ]
+        llm_math = LLMMathChain(llm=self.llm)
+        tools.append(
+        Tool(
+            name='Calculator',
+            func=llm_math.run,
+            description='Useful for when you need to answer questions about math.'
+        )
+        )
+
+        if st.session_state.web_search is True:
+            llm_search = CustomGoogleSearchAPIWrapper()
+            tools.append(
+                Tool(
+                    name="Google_Search",
+                    func=llm_search.fetch_and_scrape,
+                    description="Useful when you cannot find a clear answer after looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
+                )
+            )
 
         if st.session_state.vector_store is not None:
             metadata = st.session_state.document_metadata
             file_name = st.session_state.document_filename
-            llm_database = DatabaseTool(llm=llm, vector_store=st.session_state.vector_store, metadata=metadata, filename=file_name)
+            llm_database = DatabaseTool(llm=self.llm, vector_store=st.session_state.vector_store, metadata=metadata, filename=file_name)
 
             #st.write(llm_database.get_description())
 
@@ -783,32 +787,28 @@ class MRKL:
 
         if st.session_state.br18_exp is True:
             br18_folder_path = os.path.join(current_directory, "BR18_DB")
-            llm_br18 = BR18_DB(llm=llm, folder_path=br18_folder_path)
+            llm_br18 = BR18_DB(llm=self.llm, folder_path=br18_folder_path)
 
-            tools.extend([
+            tools.append(
             Tool(
                 name='BR18_Database',
                 func=llm_br18.run,
                 description="""
                 Always useful for when you need to answer questions about the Danish Building Regulation 18 (BR18). 
-                Input should be the specific keywords from the user query. Exclude the following common terms and their variations or synonyms especially words such as "building" and "regulation".
+                Input should be the specific keywords from the user query. Exclude the following common terms and their variations or synonyms especially words such as 'building' and 'regulation'.
                 Use this tool more often than the normal search tool.
                 """
-            ),
-            ])
+            )
+            )
+
         return tools
 
     def load_agent(self):
-        llm = ChatOpenAI(
-            temperature=0, 
-            streaming=True,
-            model_name="gpt-3.5-turbo",
-            )
         
         # Memory
         chat_msg = StreamlitChatMessageHistory(key="mrkl_chat_history")
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=llm, input_key='input', output_key="output", max_token_limit=8000, chat_memory=chat_msg)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=8000, chat_memory=chat_msg)
         st.session_state.history = memory
 
         system_message_content = """
@@ -845,7 +845,7 @@ class MRKL:
         )
 
         # Agent
-        agent = OpenAIFunctionsAgent(llm=llm, tools=self.tools, prompt=prompt)
+        agent = OpenAIFunctionsAgent(llm=self.llm, tools=self.tools, prompt=prompt)
         
         # Agent Executor
         agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=self.tools, memory=memory, verbose=True, return_intermediate_steps=True)
@@ -873,7 +873,7 @@ def main():
     st.title("🦜️ MRKL AGENT")
 
     if 'openai' not in st.session_state:
-        st.session_state.openai = None
+        st.session_state.openai_key = None
     if "messages" not in st.session_state:
         st.session_state.messages = [{"roles": "assistant", "content": "Hi, I am Miracle. How can I help you?"}]
     if "user_input" not in st.session_state:
@@ -892,6 +892,8 @@ def main():
         st.session_state.br18_exp = False
     if "token_count" not in st.session_state:
         st.session_state.token_count = 0
+    if 'web_search' not in st.session_state:
+        st.session_state.web_search = False
 
     if "agent" not in st.session_state:
         st.session_state.agent = MRKL()
@@ -901,7 +903,7 @@ def main():
     with st.expander("Configuration", expanded = False):
         openai_api_key = st.text_input("Enter OpenAI API Key", value="", placeholder="Enter the OpenAI API key which begins with sk-", type="password")
         if openai_api_key:
-            st.session_state.openai = openai_api_key
+            st.session_state.openai_key = openai_api_key
             os.environ["OPENAI_API_KEY"] = openai_api_key
             st.write("API key has entered")
     
@@ -918,6 +920,16 @@ def main():
                 index=0, horizontal=True  # Default to "By Context"
             )
             st.session_state.search_type = search_type
+
+        web_search_toggle = st.checkbox(
+        label="Web Search",
+        value=False,
+        help="Toggle to enable or disable the web search feature."
+        )
+        st.session_state.web_search = web_search_toggle
+
+        if st.session_state.web_search:
+            st.success("Web Search is Enabled.")
 
         st.sidebar.title("Upload Document to Database")
         uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
@@ -984,7 +996,6 @@ def main():
                 st.session_state.vector_store = None
 
 
-
     display_messages(st.session_state.messages)
 
 
@@ -993,9 +1004,6 @@ def main():
         st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
         st.chat_message("user").write(st.session_state.user_input)
 
-        current_user_message = {"input": st.session_state.user_input}
-
-
         with st.chat_message("assistant"):
             st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
             result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
@@ -1003,10 +1011,6 @@ def main():
             response = result.get('output', '')
             st.session_state.messages.append({"roles": "assistant", "content": response})
             st.write(response)
-
-            current_assistant_response = {"output": response}
-
-        current_messages = [current_user_message, current_assistant_response] 
 
     with st.expander("View Document Sources"):
         if len(st.session_state.doc_sources) != 0:
@@ -1044,11 +1048,11 @@ def main():
     
 
     #st.write(st.session_state.history)
-    #st.write(st.session_state.messages)
+    st.write(st.session_state.messages)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
-    #st.write(st.session_state.agent)
+    st.write(st.session_state.agent)
     #st.write(st.session_state.result)
 
 
