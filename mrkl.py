@@ -25,7 +25,7 @@ from langchain.schema import Document
 import langchain
 import pinecone
 from langchain.chains.question_answering import load_qa_chain
-from typing import List, Dict, Any 
+from typing import List, Dict, Any, Tuple
 from langchain.prompts.prompt import PromptTemplate
 from langchain.agents.openai_functions_agent.agent_token_buffer_memory import AgentTokenBufferMemory
 from langchain.agents.openai_functions_agent.base import OpenAIFunctionsAgent
@@ -48,6 +48,8 @@ from langchain.callbacks import get_openai_callback
 import pickle
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
+from datetime import datetime
+import pytz
 
 langchain.debug = True
 langchain.verbose = True
@@ -706,7 +708,7 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         text = ' '.join(text.split())
         return text
     
-    def scrape_content(self, url: str) -> dict:
+    def scrape_content(self, url: str, title: str) -> dict:
         loader = SeleniumURLLoader(urls=[url])
         data = loader.load()
         
@@ -714,61 +716,142 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
             soup = BeautifulSoup(data[0].page_content, "html.parser")
             text = soup.get_text()
             cleaned_text = self.clean_text(text)
-            return {'url': url, 'content': cleaned_text[:1000]}  # Return first 1000 non-space characters
-        return {'url': url, 'content': ''}
+            return {'url': url, 'title': title, 'content': cleaned_text[:1000]}  # Return first 1000 non-space characters
+        return {'url': url, 'title': title, 'content': ''}
     
-    def fetch_and_scrape(self, query: str, num_results: int = 3) -> str:
+
+    def format_single_search_result(self, search_result: Dict) -> str:
+        # Formatting the output text
+        formatted_text = f"URL: {search_result['url']}\n\nTITLE: {search_result['title']}\n\nCONTENT: {search_result['content']}\n\n"
+        return formatted_text
+
+    
+    def fetch_and_scrape(self, query: str, num_results: int = 3) -> Tuple[List[Dict], List[Dict]]:
         # Step 1: Fetch search results metadata
         metadata_results = self.results(query, num_results)
         
         if len(metadata_results) == 0:
-            return '[URL: None, Content: No good Google Search Result was found]'
-        
-        # Step 2: Extract URLs
-        urls = [result.get("link", "") for result in metadata_results if "link" in result]
+            return [], []
 
-        # Step 3: Scrape content from URLs
-        texts = []
-        for url in urls:
-            scraped_content = self.scrape_content(url)
-            formatted_text = f"[URL: {scraped_content['url']}, Content: {scraped_content['content']}]"
-            texts.append(formatted_text)
+        # Step 2: Scrape and format content from URLs
+        formatted_search_results = []
+
+        for result in metadata_results:
+            url = result.get("link", "")
+            title = result.get("title", "")  # Get the title from metadata
+            scraped_content = self.scrape_content(url, title) 
+            formatted_search_result = self.format_single_search_result(scraped_content)
+            formatted_search_results.append(formatted_search_result)
         
-        return " ".join(texts)[:3000]
+        return formatted_search_results, metadata_results
+    
+    def run(self, query: str, num_results: int = 3):
+        llm = ChatOpenAI(
+            temperature=0, 
+            model_name="gpt-3.5-turbo",
+            )
+
+        # Step 1: Fetch and format the search results
+        formatted_search_results, metadata_results = self.fetch_and_scrape(query, num_results)
+        #st.write(formatted_search_results)
+        #st.write(metadata_results)
+
+        search_results = []
+        for i, formatted_result in enumerate(formatted_search_results):
+            doc = Document(
+                page_content=formatted_result, # You can replace this with 'content' if you have the actual content
+                metadata={
+                'source': 'Google Search',
+                'title': metadata_results[i].get('title', ''),
+                'url': metadata_results[i].get('link', ''),
+                'snippet': metadata_results[i].get('snippet', '')
+                }
+            )
+            search_results.append(doc)
+
+        #st.write(search_results)
+
+        # Fetch current local time
+        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S%z')
+
+        # Step 2: Create a new prompt template
+        prompt_template = """
+        For your reference, your local date and time is {current_time}.
+        Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding content.
+        Your answer should:
+        1. Be as specific as possible.
+        2. Cite the sources by mentioning the corresponding URL when you use any information from them.
+        3. Be concise and directly address the question.
+
+        Note: If the search results do not contain the information needed to answer the question, or if you are unsure about the answer, state that explicitly. Do not try to make up an answer.
+
+        Search Results:
+        {context}
+
+        Question:
+        {question}
+
+        For citing sources, use the following format: (Source: URL)
+        """
+
+        PROMPT = PromptTemplate(
+            template=prompt_template, input_variables=["context", "question", "current_time"]
+        )
+
+        # Step 3: Load the QA chain and generate an answer
+        qa_chain = load_qa_chain(llm=llm, chain_type="stuff", verbose=True, prompt=PROMPT)
+        output = qa_chain({"input_documents": search_results, "question": query, "current_time": current_time}, return_only_outputs=True)
+
+        st.session_state.doc_sources = search_results
+
+        return output
+    
+
 
 class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
-        temperature=0, 
-        streaming=True,
-        model_name="gpt-3.5-turbo",
-        )
+            temperature=0, 
+            streaming=True,
+            model_name="gpt-3.5-turbo",
+            )
         self.tools = self.load_tools()
         self.agent_executor, self.memory = self.load_agent()
+
+    def conversational_tool_func(*args, **kwargs):
+        return "Conversational skills activated. No action performed."
 
     def load_tools(self):
         current_directory = os.getcwd()
         # Load tools
         tools = []
 
-        llm_math = LLMMathChain(llm=self.llm)
         tools.append(
-        Tool(
-            name='Calculator',
-            func=llm_math.run,
-            description='Useful for when you need to answer questions about math.'
-        )
+            Tool(
+                name='Conversational_Tool',
+                func=MRKL.conversational_tool_func,
+                description='Using your conversational skills as an assistance to answer user queries and concerns'
+            )
         )
 
-        if st.session_state.web_search is True:
-            llm_search = CustomGoogleSearchAPIWrapper()
-            tools.append(
-                Tool(
-                    name="Google_Search",
-                    func=llm_search.fetch_and_scrape,
-                    description="Useful when you cannot find a clear answer after looking up the database and that you need to search the internet for information. Input should be a fully formed question based on the context of what you couldn't find and not referencing any obscure pronouns from the conversation before"
+        llm_search = CustomGoogleSearchAPIWrapper()
+    
+        existing_tool = next((tool for tool in tools if tool.name == 'Google_Search'), None)
+        
+        if st.session_state.web_search:
+            if existing_tool:
+                existing_tool.func = llm_search.run
+            else:
+                tools.append(
+                    Tool(
+                        name="Google_Search",
+                        func=llm_search.run,
+                        description="Useful for web search."
+                    )
                 )
-            )
+        else:
+            if existing_tool:
+                existing_tool.func = llm_search.disabled_function
 
         if st.session_state.vector_store is not None:
             metadata = st.session_state.document_metadata
@@ -894,11 +977,11 @@ def main():
         st.session_state.token_count = 0
     if 'web_search' not in st.session_state:
         st.session_state.web_search = False
-
-    if "agent" not in st.session_state:
-        st.session_state.agent = MRKL()
     if 'show_info' not in st.session_state:
         st.session_state.show_info = False
+    if "agent" not in st.session_state:
+        st.session_state.agent = MRKL()
+
 
     with st.expander("Configuration", expanded = False):
         openai_api_key = st.text_input("Enter OpenAI API Key", value="", placeholder="Enter the OpenAI API key which begins with sk-", type="password")
@@ -908,7 +991,7 @@ def main():
             st.write("API key has entered")
     
     with st.sidebar:
-        br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
+        br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
         if br18_experiment != st.session_state.br18_exp:
             st.session_state.br18_exp = br18_experiment
             st.session_state.agent = MRKL()
@@ -921,12 +1004,11 @@ def main():
             )
             st.session_state.search_type = search_type
 
-        web_search_toggle = st.checkbox(
-        label="Web Search",
-        value=False,
-        help="Toggle to enable or disable the web search feature."
-        )
-        st.session_state.web_search = web_search_toggle
+        web_search_toggle = st.checkbox(label="Web Search", value=False, help="Toggle to enable or disable the web search feature.")
+        
+        if web_search_toggle != st.session_state.web_search:
+            st.session_state.web_search = web_search_toggle
+            st.session_state.agent = MRKL()
 
         if st.session_state.web_search:
             st.success("Web Search is Enabled.")
@@ -996,8 +1078,9 @@ def main():
                 st.session_state.vector_store = None
 
 
-    display_messages(st.session_state.messages)
 
+    display_messages(st.session_state.messages)
+    
 
     if user_input := st.chat_input("Type something here..."):
         st.session_state.user_input = user_input
@@ -1012,7 +1095,7 @@ def main():
             st.session_state.messages.append({"roles": "assistant", "content": response})
             st.write(response)
 
-    with st.expander("View Document Sources"):
+    with st.expander("View Document Sources", expanded=False):
         if len(st.session_state.doc_sources) != 0:
 
             for document in st.session_state.doc_sources:
@@ -1022,7 +1105,7 @@ def main():
                         st.subheader("Metadata:")
 
                         # Display only relevant metadata keys
-                        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author"]
+                        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet", "url"]
                         for key in relevant_keys:
                             value = document.metadata.get(key, 'N/A')
                             if value != 'N/A':
@@ -1048,12 +1131,12 @@ def main():
     
 
     #st.write(st.session_state.history)
-    st.write(st.session_state.messages)
+    #st.write(st.session_state.messages)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
     st.write(st.session_state.agent)
-    #st.write(st.session_state.result)
+    st.write(st.session_state.result)
 
 
 if __name__== '__main__':
