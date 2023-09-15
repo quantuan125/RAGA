@@ -1,4 +1,8 @@
 beautifulsoup4==4.12.2
+<<<<<<< HEAD
+chromadb==0.4.4
+=======
+>>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 langchain==0.0.288
 lark==1.1.7
 openai==0.27.8
@@ -8,10 +12,27 @@ pypdf==3.16.0
 PyPDF2==3.0.1
 python-dotenv==1.0.0
 Requests==2.31.0
+<<<<<<< HEAD
 streamlit==1.25.0
+=======
+<<<<<<< HEAD
+streamlit==1.25.0
+uuid
+json
+pickle
+tempfile 
+dotenv
+=======
+streamlit==1.26.0
+>>>>>>> 8bc750f010e81aa8bf8f5dfe9b9bc938399a3e24
 google-api-python-client
 openai
 tiktoken
 faiss-cpu
+<<<<<<< HEAD
 selenium==4.12.0 
+=======
+
+>>>>>>> 35de9d424904d18ca15f654115444b95e5019609
+>>>>>>> 8bc750f010e81aa8bf8f5dfe9b9bc938399a3e24
 
