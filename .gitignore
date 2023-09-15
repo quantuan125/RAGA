@@ -175,10 +175,6 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/python
 
-<<<<<<< HEAD
-secrets.toml
-=======
 secrets.toml
 
 storage/
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
