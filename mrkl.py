@@ -52,11 +52,8 @@ from langchain.schema.output_parser import StrOutputParser
 langchain.debug = True
 langchain.verbose = True
 
-<<<<<<< HEAD
-=======
 
 
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 def on_selectbox_change():
     st.session_state.show_info = True
 
@@ -166,11 +163,7 @@ class DBStore:
                     },
                 )
                 doc_chunks.append(doc)
-<<<<<<< HEAD
-        st.write(doc_chunks)
-=======
         #st.write(doc_chunks)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
         return doc_chunks
     
     def get_pdf_text(self):
@@ -331,11 +324,7 @@ class DatabaseTool:
             "Page Content": doc.page_content,
             }
             compressed_docs_list.append(doc_info)
-<<<<<<< HEAD
-        st.write(compressed_docs_list)
-=======
         #st.write(compressed_docs_list)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
         
         base_retriever=self.get_base_retriever()
         initial_retrieved = base_retriever.get_relevant_documents(query)
@@ -508,13 +497,8 @@ class BR18_DB:
         summaries = self.generate_summaries(all_parent_splits)
         all_child_splits = self.generate_child_splits(all_parent_splits, summaries)
 
-<<<<<<< HEAD
-        st.write(all_parent_splits)
-        st.write(all_child_splits)
-=======
         #st.write(all_parent_splits)
         #st.write(all_child_splits)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 
         return all_parent_splits, all_child_splits  # Return both lists
     
@@ -542,13 +526,8 @@ class BR18_DB:
     def create_retriever(self, query: str):
         search_type = st.session_state.search_type
 
-<<<<<<< HEAD
-        if search_type == "By Content":
-            # Initialize retriever for By Content, filtering by the presence of the "text" metadata
-=======
         if search_type == "By Context":
             # Initialize retriever for By Context, filtering by the presence of the "text" metadata
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
             general_retriever = MultiVectorRetriever(
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
@@ -557,11 +536,7 @@ class BR18_DB:
             )
 
             parent_docs = general_retriever.vectorstore.similarity_search(query, k = 5)
-<<<<<<< HEAD
-            st.write(parent_docs)
-=======
             #st.write(parent_docs)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 
             st.session_state.doc_sources = parent_docs
 
@@ -601,11 +576,7 @@ class BR18_DB:
                     "Header 4": doc.metadata.get('Header 4', 'N/A'),
                 }
                 display_list.append(display_dict)
-<<<<<<< HEAD
-            st.write(display_list)
-=======
             #st.write(display_list)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
             
             return retrieved_parent_docs
         
@@ -615,29 +586,17 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-<<<<<<< HEAD
-                search_kwargs={"k": 4}
-            )
-
-            child_docs = specific_retriever.vectorstore.similarity_search(query, k = 4)
-            st.write(child_docs)
-=======
                 search_kwargs={"k": 3}
             )
 
             child_docs = specific_retriever.vectorstore.similarity_search(query, k = 3)
             #st.write(child_docs)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 
             # Retrieve child documents that match the query
             
             embeddings = self.embeddings
             embedding_filter = EmbeddingsFilter(embeddings=embeddings, similarity_threshold=0.75)
-<<<<<<< HEAD
-            llm_filter = LLMChainFilter.from_llm(self.llm)
-=======
             #llm_filter = LLMChainFilter.from_llm(self.llm)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
 
             
             compression_retriever = ContextualCompressionRetriever(base_compressor=embedding_filter, base_retriever=specific_retriever)
@@ -656,11 +615,7 @@ class BR18_DB:
                     "Header 4": doc.metadata.get('Header 4', 'N/A'),
                 }
                 display_list.append(display_dict)
-<<<<<<< HEAD
-            st.write(display_list)
-=======
             #st.write(display_list)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
             
             return retrieved_child_docs
         
@@ -951,11 +906,7 @@ def main():
             st.session_state.openai_key = openai_api_key
             os.environ["OPENAI_API_KEY"] = openai_api_key
             st.write("API key has entered")
-<<<<<<< HEAD
-
-=======
     
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
     with st.sidebar:
         br18_experiment = st.checkbox("Experimental Feature: Enable BR18", value=False)
         if br18_experiment != st.session_state.br18_exp:
@@ -965,13 +916,8 @@ def main():
         if br18_experiment:  # If BR18 is enabled
             search_type = st.radio(
                 "Select Search Type:",
-<<<<<<< HEAD
-                options=["By Content", "By Headers"],
-                index=0, horizontal=True  # Default to "By Content"
-=======
                 options=["By Headers", "By Context"],
                 index=0, horizontal=True  # Default to "By Context"
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
             )
             st.session_state.search_type = search_type
 
@@ -1101,27 +1047,12 @@ def main():
 
     
 
-<<<<<<< HEAD
-
-    #st.write(st.session_state.history)
-    #st.write(st.session_state.messages)
-    #st.write(st.session_state.vector_store)
-    st.write(st.session_state.br18_vectorstore)
-    #st.write(st.session_state.br18_appendix_child_vectorstore)
-    #st.write(st.session_state.usc_vectorstore)
-    st.write(st.session_state.agent)
-=======
     #st.write(st.session_state.history)
     st.write(st.session_state.messages)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
-<<<<<<< HEAD
     st.write(st.session_state.agent)
-=======
-    #st.write(st.session_state.agent)
->>>>>>> 35de9d424904d18ca15f654115444b95e5019609
->>>>>>> 8bc750f010e81aa8bf8f5dfe9b9bc938399a3e24
     #st.write(st.session_state.result)
 
 
