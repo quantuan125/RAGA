@@ -958,7 +958,7 @@ class MRKL:
 
 def main():
 
-    if "openai_key" not in st.session_state or st.session_state.openai_key is None:
+    if "openai_key" not in st.session_state or not st.session_state.openai_key:
         st.error("Please enter the OpenAI API key in the Configuration tab before proceeding.")
 
     else:
