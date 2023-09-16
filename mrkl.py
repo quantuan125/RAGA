@@ -330,15 +330,36 @@ class DatabaseTool:
         
         base_retriever=self.get_base_retriever()
         initial_retrieved = base_retriever.get_relevant_documents(query)
+        st.session_state.doc_sources = initial_retrieved
+
+        documentdb_prompt_content = """
+            You are a specialized retriever model trained to assist MRKL, an AI expert in construction, legal frameworks, and regulatory matters for the engineering firm COWI.
+
+            Your primary objectives are to:
+                1. Retrieve the most detailed and relevant information to the query. 
+                2. Prioritize numerical values, names, or other specific details over vague or generalized content.
+                3. Mention and cite the source of the information retrieved where relevant. If the source is from an authoritative body or expert, make that clear.
+
+            For example, if asked 'How many buildings are there in this project?', don't just provide the number. List out each building and give a concise description if possible.
+            
+            Note: If you don't find any relevant or specific information, consider employing another tool to find the answer in a statement.
+
+            ----------------
+            {context}
+            ----------------
+            Question: {question}
+        """
+
+        documentdb_prompt = PromptTemplate.from_template(documentdb_prompt_content)
 
         retrieval = RetrievalQA.from_chain_type( 
         llm=self.llm, chain_type="stuff", 
         retriever=contextual_retriever,
+        chain_type_kwargs={"prompt": documentdb_prompt},
         return_source_documents=True,
         )
 
         output = retrieval(query)
-        st.session_state.doc_sources = initial_retrieved
 
         
         return output['result']
@@ -622,23 +643,19 @@ class BR18_DB:
             return retrieved_child_docs
         
     def run(self, query: str):
-        prompt_template = """Use the following pieces of context to answer the question at the end. 
-        The answer should be as specific as possible to a chapter and section where clause numbers and their respective subclause are referenced. 
-        Make sure to mention requirement numbers and specific integer values where relevant.
-        If you don't know the answer, just say that you don't know, don't try to make up an answer.
+        prompt_template = """The following pieces of context are from the BR18. Use them to answer the question at the end. 
+        The answer should be as specific as possible and remember to mention requirement numbers and integer values where relevant
+        Always reference to a chapter and section and their respective clauses and subclauses numbers 
+        If you don't know the answer, explicitly state that you don't know and suggest using another tool to find the answer. 
 
         {context}
 
         Question: {question}
-        
-        EXAMPLE: 
+
+        EXAMPLE:
         The building regulation regarding stairs is outlined in Chapter 2 - Access, specifically in Section - Stairs:
 
         Width: Stairs in shared access routes must have a minimum free width of 1.0 meter. (clause 57.1)
-
-        Headroom: Stairs must have a minimum free headroom of 2.10 meters. (clause 57.1)
-
-        Gradient: The gradient of the stairs must not exceed 0.18 meters. (clause 57.2)
         """
 
         PROMPT = PromptTemplate(
@@ -763,7 +780,6 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
                 metadata={
                 'source': 'Google Search',
                 'title': metadata_results[i].get('title', ''),
-                'url': metadata_results[i].get('link', ''),
                 'snippet': metadata_results[i].get('snippet', '')
                 }
             )
@@ -777,10 +793,10 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         # Step 2: Create a new prompt template
         prompt_template = """
         For your reference, your local date and time is {current_time}.
-        Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding content.
+        Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding title and content.
         Your answer should:
-        1. Be as specific as possible.
-        2. Cite the sources by mentioning the corresponding URL when you use any information from them.
+        1. Be as specific as possible with regards to numerical values through the metric system and European measurement standards.
+        2. Cite the sources by mentioning the corresponding URL.
         3. Be concise and directly address the question.
 
         Note: If the search results do not contain the information needed to answer the question, or if you are unsure about the answer, state that explicitly. Do not try to make up an answer.
@@ -807,13 +823,13 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         return output
     
 
-
 class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
             temperature=0, 
-            streaming=True,
+            streaming=False,
             model_name="gpt-3.5-turbo",
+            max_tokens=500
             )
         self.tools = self.load_tools()
         self.agent_executor, self.memory = self.load_agent()
@@ -891,13 +907,13 @@ class MRKL:
         # Memory
         chat_msg = StreamlitChatMessageHistory(key="mrkl_chat_history")
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=8000, chat_memory=chat_msg)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=3000, chat_memory=chat_msg)
         st.session_state.history = memory
 
         system_message_content = """
         You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
         
-        You are designed to be an AI Chatbot for the engineering firm COWI, and you have the following tools to answer user queries, but only use them if necessary.
+        You have the following tools to answer user queries, but only use them if necessary.
 
         Unless otherwise explicitly stated, the user queries are about the context given.
 
@@ -1004,7 +1020,7 @@ def main():
             )
             st.session_state.search_type = search_type
 
-        web_search_toggle = st.checkbox(label="Web Search", value=False, help="Toggle to enable or disable the web search feature.")
+        web_search_toggle = st.checkbox(label="Experimental Feature: Web Search", value=False, help="Toggle to enable or disable the web search feature.")
         
         if web_search_toggle != st.session_state.web_search:
             st.session_state.web_search = web_search_toggle
@@ -1105,7 +1121,7 @@ def main():
                         st.subheader("Metadata:")
 
                         # Display only relevant metadata keys
-                        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet", "url"]
+                        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
                         for key in relevant_keys:
                             value = document.metadata.get(key, 'N/A')
                             if value != 'N/A':
