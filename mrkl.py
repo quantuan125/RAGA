@@ -996,14 +996,10 @@ def main():
                 st.session_state.agent = MRKL()
 
 
-        with st.expander("About Me", expanded = False):
+        with st.expander("General Info", expanded = False):
             st.write("About")
         
         with st.sidebar:
-
-            with st.sidebar.expander(label = "General Info"):
-                st.write("Write here")
-
             br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
             if br18_experiment != st.session_state.br18_exp:
                 st.session_state.br18_exp = br18_experiment
