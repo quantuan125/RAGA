@@ -14,4 +14,5 @@ openai
 tiktoken
 faiss-cpu
 selenium==4.12.0 
-
+streamlit_extras
+st-pages
