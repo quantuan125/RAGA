@@ -49,7 +49,9 @@ import pickle
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from datetime import datetime
-import pytz
+from streamlit_extras.stoggle import stoggle
+from customstoggle import customstoggle
+
 
 langchain.debug = True
 langchain.verbose = True
@@ -333,20 +335,15 @@ class DatabaseTool:
         st.session_state.doc_sources = initial_retrieved
 
         documentdb_prompt_content = """
-            You are a specialized retriever model trained to assist MRKL, an AI expert in construction, legal frameworks, and regulatory matters for the engineering firm COWI.
-
-            Your primary objectives are to:
-                1. Retrieve the most detailed and relevant information to the query. 
-                2. Prioritize numerical values, names, or other specific details over vague or generalized content.
-                3. Mention and cite the source of the information retrieved where relevant. If the source is from an authoritative body or expert, make that clear.
-
-            For example, if asked 'How many buildings are there in this project?', don't just provide the number. List out each building and give a concise description if possible.
+            You are a specialized retriever model trained to assist MRKL, an AI expert in various domains.
             
-            Note: If you don't find any relevant or specific information, consider employing another tool to find the answer in a statement.
+            The following pieces of context are from the uploaded document. Your primary objectives are to:
+            1. Retrieve the most detailed and relevant information to the query
+            2. Prioritize numerical values, names, or other specific details over vague or generalized content.
 
-            ----------------
+            
             {context}
-            ----------------
+            
             Question: {question}
         """
 
@@ -646,7 +643,7 @@ class BR18_DB:
         prompt_template = """The following pieces of context are from the BR18. Use them to answer the question at the end. 
         The answer should be as specific as possible and remember to mention requirement numbers and integer values where relevant
         Always reference to a chapter and section and their respective clauses and subclauses numbers 
-        If you don't know the answer, explicitly state that you don't know and suggest using another tool to find the answer. 
+        If you don't find any relevant or specific information, consider employing another tool to find the answer as a statement.
 
         {context}
 
@@ -827,7 +824,7 @@ class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
             temperature=0, 
-            streaming=False,
+            streaming=True,
             model_name="gpt-3.5-turbo",
             max_tokens=500
             )
@@ -915,8 +912,6 @@ class MRKL:
         
         You have the following tools to answer user queries, but only use them if necessary.
 
-        Unless otherwise explicitly stated, the user queries are about the context given.
-
         Your primary objective is to provide responses that:
         1. Offer an overview of the topic, referencing the chapter and the section if relevant
         2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
@@ -931,7 +926,8 @@ class MRKL:
 
         reflection_message_content = """
         Reminder: 
-        Always try all your tools to find the right answer with the search tool as your last resort.
+        Always try all your tools to find the answer to the user query
+
         Always self-reflect your answer based on the user's query and follows the list of response objective. 
         """
 
@@ -1007,6 +1003,10 @@ def main():
             st.write("API key has entered")
     
     with st.sidebar:
+
+        with st.sidebar.expander(label = "General Info"):
+            st.write("Write here")
+
         br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
         if br18_experiment != st.session_state.br18_exp:
             st.session_state.br18_exp = br18_experiment
@@ -1111,29 +1111,6 @@ def main():
             st.session_state.messages.append({"roles": "assistant", "content": response})
             st.write(response)
 
-    with st.expander("View Document Sources", expanded=False):
-        if len(st.session_state.doc_sources) != 0:
-
-            for document in st.session_state.doc_sources:
-                        st.divider()
-                        st.subheader("Source Content:")
-                        st.write(document.page_content)
-                        st.subheader("Metadata:")
-
-                        # Display only relevant metadata keys
-                        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
-                        for key in relevant_keys:
-                            value = document.metadata.get(key, 'N/A')
-                            if value != 'N/A':
-                                st.write(f"{key}: {value}")
-        else:
-            st.write("No document sources found")
-
-    if st.session_state.summary is not None:
-        with st.expander("Show Summary"):
-            st.subheader("Summarization")
-            result_summary = st.session_state.summary
-            st.write(result_summary)
 
     #with st.expander("Cost Tracking", expanded=True):
         #total_token = st.session_state.token_count
@@ -1144,15 +1121,40 @@ def main():
         #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
         st.button("Clear Chat", key="clear", on_click=reset_chat)
 
-    
+        relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
+        if st.session_state.doc_sources:
+            content = []
+            for document in st.session_state.doc_sources:
+                doc_dict = {
+                    "page_content": document.page_content,
+                    "metadata": {}
+                }
+                for key in relevant_keys:
+                    value = document.metadata.get(key, 'N/A')
+                    if value != 'N/A':
+                        doc_dict["metadata"][key] = value
+                content.append(doc_dict)
+            
+            customstoggle(
+                "Source Documents",
+                content,
+                metadata_keys=relevant_keys
+            )
+
+
+    if st.session_state.summary is not None:
+        with st.expander("Show Summary"):
+            st.subheader("Summarization")
+            result_summary = st.session_state.summary
+            st.write(result_summary)
 
     #st.write(st.session_state.history)
     #st.write(st.session_state.messages)
     #st.write(st.session_state.br18_vectorstore)
     #st.write(st.session_state.br18_appendix_child_vectorstore)
     #st.write(st.session_state.usc_vectorstore)
-    st.write(st.session_state.agent)
-    st.write(st.session_state.result)
+    #st.write(st.session_state.agent)
+    #st.write(st.session_state.result)
 
 
 if __name__== '__main__':
