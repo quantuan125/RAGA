@@ -817,7 +817,6 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
         return output
     
-
 class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
