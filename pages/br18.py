@@ -16,7 +16,7 @@ def main():
     current_directory = os.getcwd()
 
     # Concatenate the current directory with the relative path to the PDF file
-    file_path = os.path.join(current_directory, "BR18.pdf")
+    file_path = os.path.join(current_directory, "pdf/BR18.pdf")
     st.write(file_path)
 
     # Display the PDF
