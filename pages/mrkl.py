@@ -996,7 +996,11 @@ def main():
 
 
         with st.expander("General Info", expanded = False):
-            st.write("About")
+            st.write("""
+                - Google Search 
+                - Document Database
+                - BR18 Database
+                """)
         
         with st.sidebar:
             br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
@@ -1108,6 +1112,7 @@ def main():
             #total_token = st.session_state.token_count
             #st.write(total_token)
 
+        st.divider()
         buttons_placeholder = st.container()
         with buttons_placeholder:
             #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
