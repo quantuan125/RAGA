@@ -52,9 +52,18 @@ from langchain.schema.output_parser import StrOutputParser
 from datetime import datetime
 from streamlit_extras.stoggle import stoggle
 from UI.customstoggle import customstoggle
+import base64
+from UI.css import apply_css
 
 langchain.debug = True
 langchain.verbose = True
+
+@st.cache_data
+def display_pdfs(file_path):
+    with open(file_path, "rb") as f:
+        base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+    pdf_display = f'<embed src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></embed>'
+    st.markdown(pdf_display, unsafe_allow_html=True)
 
 def on_selectbox_change():
     st.session_state.show_info = True
@@ -966,6 +975,7 @@ def main():
             api_key=os.environ["PINECONE_API_KEY"], environment=os.environ["PINECONE_ENV"]
             )
         st.set_page_config(page_title="MRKL AGENT", page_icon="🦜️", layout="wide")
+        apply_css()
         st.title("MRKL AGENT 🦜️")
 
         with st.empty():
@@ -975,6 +985,8 @@ def main():
                 st.session_state.user_input = None
             if "vector_store" not in st.session_state:
                 st.session_state.vector_store = None
+            if "pdf_file_path" not in st.session_state:
+                st.session_state.pdf_file_path = None
             if "summary" not in st.session_state:
                 st.session_state.summary = None
             if "doc_sources" not in st.session_state:
@@ -993,7 +1005,6 @@ def main():
                 st.session_state.show_info = False
             if "agent" not in st.session_state:
                 st.session_state.agent = MRKL()
-
 
         with st.expander("General Info", expanded = False):
             st.write("""
@@ -1061,6 +1072,7 @@ def main():
                                 tmpfile.write(selected_file.getvalue())
                                 temp_path = tmpfile.name
                                 db_store = DBStore(temp_path, selected_file.name)
+                                st.session_state.pdf_file_path = temp_path
 
                                 document_chunks = db_store.get_pdf_text()
                                 st.session_state.document_chunks = document_chunks
@@ -1090,60 +1102,69 @@ def main():
                     st.session_state.vector_store = None
 
 
+        main_chat_tab, pdf_display_tab = st.tabs(["Main Chat", "PDF Display"])
 
-        display_messages(st.session_state.messages)
+        with main_chat_tab:
+            display_messages(st.session_state.messages)
+
+        with pdf_display_tab:
+            if st.session_state.pdf_file_path:
+                pdf_file = st.session_state.pdf_file_path
+                st.subheader("Displaying Uploaded PDF")
+                display_pdfs(pdf_file)
+            else:
+                st.warning("No PDF uploaded. Please upload and a process a PDF in the sidebar.")
         
+        with st.container():
+            if user_input := st.chat_input("Type something here..."):
+                st.session_state.user_input = user_input
+                st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
+                st.chat_message("user").write(st.session_state.user_input)
 
-        if user_input := st.chat_input("Type something here..."):
-            st.session_state.user_input = user_input
-            st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
-            st.chat_message("user").write(st.session_state.user_input)
-
-            with st.chat_message("assistant"):
-                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
-                result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
-                st.session_state.result = result
-                response = result.get('output', '')
-                st.session_state.messages.append({"roles": "assistant", "content": response})
-                st.write(response)
-
-
-        #with st.expander("Cost Tracking", expanded=True):
-            #total_token = st.session_state.token_count
-            #st.write(total_token)
-
-        st.divider()
-        buttons_placeholder = st.container()
-        with buttons_placeholder:
-            #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-            st.button("Clear Chat", key="clear", on_click=reset_chat)
-
-            relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
-            if st.session_state.doc_sources:
-                content = []
-                for document in st.session_state.doc_sources:
-                    doc_dict = {
-                        "page_content": document.page_content,
-                        "metadata": {}
-                    }
-                    for key in relevant_keys:
-                        value = document.metadata.get(key, 'N/A')
-                        if value != 'N/A':
-                            doc_dict["metadata"][key] = value
-                    content.append(doc_dict)
-                
-                customstoggle(
-                    "Source Documents",
-                    content,
-                    metadata_keys=relevant_keys
-                )
+                with st.chat_message("assistant"):
+                    st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
+                    result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+                    st.session_state.result = result
+                    response = result.get('output', '')
+                    st.session_state.messages.append({"roles": "assistant", "content": response})
+                    st.write(response)
 
 
-        if st.session_state.summary is not None:
-            with st.expander("Show Summary"):
-                st.subheader("Summarization")
-                result_summary = st.session_state.summary
-                st.write(result_summary)
+            #with st.expander("Cost Tracking", expanded=True):
+                #total_token = st.session_state.token_count
+                #st.write(total_token)
+
+            st.divider()
+            buttons_placeholder = st.container()
+            with buttons_placeholder:
+                #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
+                st.button("Clear Chat", key="clear", on_click=reset_chat)
+
+                relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
+                if st.session_state.doc_sources:
+                    content = []
+                    for document in st.session_state.doc_sources:
+                        doc_dict = {
+                            "page_content": document.page_content,
+                            "metadata": {}
+                        }
+                        for key in relevant_keys:
+                            value = document.metadata.get(key, 'N/A')
+                            if value != 'N/A':
+                                doc_dict["metadata"][key] = value
+                        content.append(doc_dict)
+                    
+                    customstoggle(
+                        "Source Documents",
+                        content,
+                        metadata_keys=relevant_keys
+                    )
+
+            if st.session_state.summary is not None:
+                with st.expander("Show Summary"):
+                    st.subheader("Summarization")
+                    result_summary = st.session_state.summary
+                    st.write(result_summary)
 
         #st.write(st.session_state.history)
         #st.write(st.session_state.messages)

@@ -2,11 +2,14 @@ import streamlit as st
 import os
 from st_pages import add_page_title
 from streamlit_extras.switch_page_button import switch_page
+from UI.css import apply_css
 
 def main():
     st.set_page_config(page_title="CONFIGURATION", page_icon="⚙️", layout="wide")
+    apply_css()
 
     st.title("CONFIGURATION ⚙️")
+    
 
     initial_api_key = st.session_state.openai_key if 'openai_key' in st.session_state else ""
 

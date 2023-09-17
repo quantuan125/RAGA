@@ -4,13 +4,13 @@ from streamlit_extras.mention import mention
 import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
 from streamlit_extras.colored_header import colored_header
-from UI.css import css
+from UI.css import apply_css
 
 
 st.set_page_config(page_title="Home Page", page_icon="🏠", layout="wide")
 st.title("Welcome to MRKL 🦜️")
 
-st.markdown(css, unsafe_allow_html=True)
+apply_css()
 with st.empty():
     if 'openai_key' not in st.session_state:
         st.session_state.openai_key = ""
