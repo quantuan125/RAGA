@@ -613,10 +613,10 @@ class BR18_DB:
                 vectorstore=self.vectorstore,
                 docstore=self.br18_parent_store,
                 id_key=self.id_key,
-                search_kwargs={"k": 3}
+                search_kwargs={"k": 2}
             )
 
-            child_docs = specific_retriever.vectorstore.similarity_search(query, k = 3)
+            #child_docs = specific_retriever.vectorstore.similarity_search(query, k = 2)
             #st.write(child_docs)
 
             # Retrieve child documents that match the query
@@ -796,14 +796,15 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
         # Step 2: Create a new prompt template
         prompt_template = """
-        For your reference, your local date and time is {current_time}.
-        Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding title and content.
-        Your answer should:
-        1. Be as specific as possible with regards to numerical values through the metric system and European measurement standards.
-        2. Cite the sources by mentioning the corresponding URL.
-        3. Be concise and directly address the question.
+        You are a specialized retriever model trained to retrieve Google Search Results to assist MRKL, an AI expert in various domains.
 
-        Note: If the search results do not contain the information needed to answer the question, or if you are unsure about the answer, state that explicitly. Do not try to make up an answer.
+        Your primary objectives are to:
+        1. First always list all the URL links from the search results.
+        2. Retrieve the most detailed and relevant information to the query from the relevant URL.
+        3. Prioritize numerical values of the metric system, names, or other specific details over vague or generalized content.
+        4. If there is a clear answer, cite the sources by mentioning the corresponding URL.
+        
+        For your reference, your local date and time is {current_time}.
 
         Search Results:
         {context}
@@ -811,7 +812,12 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         Question:
         {question}
 
-        For citing sources, use the following format: (Source: URL)
+        Note: If the search results do not contain the information needed or if you are unsure about the correct answer then explicitly state so. Do not make up answers. 
+
+        Begin your answer as following and always put each URL within the brackets:
+        "Here are the links I have searched through:
+        (URL 1) (URL 2) (URL 3) 
+        "
         """
 
         PROMPT = PromptTemplate(
@@ -830,7 +836,7 @@ class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
             temperature=0, 
-            streaming=True,
+            streaming=False,
             model_name="gpt-3.5-turbo",
             max_tokens=500
             )
@@ -916,14 +922,17 @@ class MRKL:
         system_message_content = """
         You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
         
-        You have the following tools to answer user queries, but only use them if necessary.
+        You have the following tools to answer user queries, but only use them if necessary. 
 
         Your primary objective is to provide responses that:
-        1. Offer an overview of the topic, referencing the chapter and the section if relevant
-        2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
+        1. Offer an overview of the topic, referencing the chapter and the section if relevant. 
+        2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant. 
         3. Always match or exceed the details of the tool's output text in your answers. 
         4. Reflect back to the user's question and give a concise conclusion.
         
+        When you use the Google Search Tool, you must return a list the searched URL links at the end of your answer.
+        Begin your answer with "Here are the links I have searched through:  (URL 1) (URL 2) (URL 3)"
+
         You must maintain a professional and helpful demeanor in all interactions.
         """
 
@@ -932,8 +941,7 @@ class MRKL:
 
         reflection_message_content = """
         Reminder: 
-        Always try all your tools to find the answer to the user query
-
+        Always try all your tools to find the answer to the user query.
         Always self-reflect your answer based on the user's query and follows the list of response objective. 
         """
 
@@ -966,10 +974,6 @@ class MRKL:
 
 def main():
 
-    if "openai_key" not in st.session_state or not st.session_state.openai_key:
-        st.error("Please enter the OpenAI API key in the Configuration tab before proceeding.")
-
-    else:
         load_dotenv()
         pinecone.init(
             api_key=os.environ["PINECONE_API_KEY"], environment=os.environ["PINECONE_ENV"]
@@ -1115,56 +1119,56 @@ def main():
             else:
                 st.warning("No PDF uploaded. Please upload and a process a PDF in the sidebar.")
         
-        with st.container():
-            if user_input := st.chat_input("Type something here..."):
-                st.session_state.user_input = user_input
-                st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
-                st.chat_message("user").write(st.session_state.user_input)
+        
+        if user_input := st.chat_input("Type something here..."):
+            st.session_state.user_input = user_input
+            st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
+            st.chat_message("user").write(st.session_state.user_input)
 
-                with st.chat_message("assistant"):
-                    st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
-                    result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
-                    st.session_state.result = result
-                    response = result.get('output', '')
-                    st.session_state.messages.append({"roles": "assistant", "content": response})
-                    st.write(response)
+            with st.chat_message("assistant"):
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
+                result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+                st.session_state.result = result
+                response = result.get('output', '')
+                st.session_state.messages.append({"roles": "assistant", "content": response})
+                st.write(response)
 
 
-            #with st.expander("Cost Tracking", expanded=True):
-                #total_token = st.session_state.token_count
-                #st.write(total_token)
+        #with st.expander("Cost Tracking", expanded=True):
+            #total_token = st.session_state.token_count
+            #st.write(total_token)
 
-            st.divider()
-            buttons_placeholder = st.container()
-            with buttons_placeholder:
-                #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-                st.button("Clear Chat", key="clear", on_click=reset_chat)
+        st.divider()
+        buttons_placeholder = st.container()
+        with buttons_placeholder:
+            #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
+            st.button("Clear Chat", key="clear", on_click=reset_chat)
 
-                relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
-                if st.session_state.doc_sources:
-                    content = []
-                    for document in st.session_state.doc_sources:
-                        doc_dict = {
-                            "page_content": document.page_content,
-                            "metadata": {}
-                        }
-                        for key in relevant_keys:
-                            value = document.metadata.get(key, 'N/A')
-                            if value != 'N/A':
-                                doc_dict["metadata"][key] = value
-                        content.append(doc_dict)
-                    
-                    customstoggle(
-                        "Source Documents",
-                        content,
-                        metadata_keys=relevant_keys
-                    )
+            relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
+            if st.session_state.doc_sources:
+                content = []
+                for document in st.session_state.doc_sources:
+                    doc_dict = {
+                        "page_content": document.page_content,
+                        "metadata": {}
+                    }
+                    for key in relevant_keys:
+                        value = document.metadata.get(key, 'N/A')
+                        if value != 'N/A':
+                            doc_dict["metadata"][key] = value
+                    content.append(doc_dict)
+                
+                customstoggle(
+                    "Source Documents",
+                    content,
+                    metadata_keys=relevant_keys
+                )
 
-            if st.session_state.summary is not None:
-                with st.expander("Show Summary"):
-                    st.subheader("Summarization")
-                    result_summary = st.session_state.summary
-                    st.write(result_summary)
+        if st.session_state.summary is not None:
+            with st.expander("Show Summary"):
+                st.subheader("Summarization")
+                result_summary = st.session_state.summary
+                st.write(result_summary)
 
         #st.write(st.session_state.history)
         #st.write(st.session_state.messages)
