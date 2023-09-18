@@ -51,9 +51,9 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from datetime import datetime
 from streamlit_extras.stoggle import stoggle
-from UI.customstoggle import customstoggle
+from ..UI.customstoggle import customstoggle
 import base64
-from UI.css import apply_css
+from ..UI.css import apply_css
 
 langchain.debug = True
 langchain.verbose = True
@@ -770,7 +770,6 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         llm = ChatOpenAI(
             temperature=0, 
             model_name="gpt-3.5-turbo",
-            max_tokens=300
             )
 
         # Step 1: Fetch and format the search results
@@ -797,13 +796,12 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
         # Step 2: Create a new prompt template
         prompt_template = """
-        For your reference, your local date and time is {current_time} and you are in Denmark. 
+        For your reference, your local date and time is {current_time}.
         Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding title and content.
         Your answer should:
-        1. Retrieve the most detailed and relevant information to the query from the relevant URL.
+        1. Be as specific as possible with regards to numerical values through the metric system and European measurement standards.
         2. Cite the sources by mentioning the corresponding URL.
-
-        Always return values following the metric system and European Standard. 
+        3. Be concise and directly address the question.
 
         Note: If the search results do not contain the information needed to answer the question, or if you are unsure about the answer, state that explicitly. Do not try to make up an answer.
 
