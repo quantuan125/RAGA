@@ -51,9 +51,9 @@ from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from datetime import datetime
 from streamlit_extras.stoggle import stoggle
-from ..UI.customstoggle import customstoggle
+from UI.customstoggle import customstoggle
 import base64
-from ..UI.css import apply_css
+from UI.css import apply_css
 
 langchain.debug = True
 langchain.verbose = True
