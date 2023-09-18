@@ -53,6 +53,7 @@ from datetime import datetime
 from streamlit_extras.stoggle import stoggle
 from UI.customstoggle import customstoggle
 import base64
+import pytz
 from UI.css import apply_css
 
 langchain.debug = True
@@ -737,16 +738,20 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
             soup = BeautifulSoup(data[0].page_content, "html.parser")
             text = soup.get_text()
             cleaned_text = self.clean_text(text)
-            return {'url': url, 'title': title, 'content': cleaned_text[:1000]}  # Return first 1000 non-space characters
+            char_limit = 1000  # default for Detailed Search
+            websearch_results = st.session_state.websearch_results
+            if websearch_results == "Quick Search":
+                char_limit = 500
+
+            return {'url': url, 'title': title, 'content': cleaned_text[:char_limit]}
+        
         return {'url': url, 'title': title, 'content': ''}
     
-
     def format_single_search_result(self, search_result: Dict) -> str:
         # Formatting the output text
         formatted_text = f"URL: {search_result['url']}\n\nTITLE: {search_result['title']}\n\nCONTENT: {search_result['content']}\n\n"
         return formatted_text
 
-    
     def fetch_and_scrape(self, query: str, num_results: int = 3) -> Tuple[List[Dict], List[Dict]]:
         # Step 1: Fetch search results metadata
         metadata_results = self.results(query, num_results)
@@ -772,6 +777,8 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
             model_name="gpt-3.5-turbo",
             max_tokens=300
             )
+        
+        num_results = st.session_state.websearch_results
 
         # Step 1: Fetch and format the search results
         formatted_search_results, metadata_results = self.fetch_and_scrape(query, num_results)
@@ -793,19 +800,21 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         #st.write(search_results)
 
         # Fetch current local time
-        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S%z')
+        copenhagen_tz = pytz.timezone('Europe/Copenhagen')
+        current_time = datetime.now(copenhagen_tz).strftime('%Y-%m-%dT%H:%M:%S%z')
 
         # Step 2: Create a new prompt template
         prompt_template = """
-        For your reference, your local date and time is {current_time} and you are in Denmark. 
-        Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding title and content.
+        For your reference, your local date and time is {current_time}.
+
+        Use the following pieces of context, which are search results from the internet to retrieve the information that best answer the question at the end. 
+        The search results include a title and a snippet of content extracted from the corresponding URL. 
+
         Your answer should:
-        1. Retrieve the most detailed and relevant information to the query from the relevant URL.
-        2. Cite the sources by mentioning the corresponding URL.
-
-        Always return values following the metric system and European Standard. 
-
-        Note: If the search results do not contain the information needed to answer the question, or if you are unsure about the answer, state that explicitly. Do not try to make up an answer.
+        1. Priotize looking into content of the URL, then the title and then the actual content of the URL. 
+        2. Retrieve the most detailed and relevant information extracted from each URLs to the query 
+        3. If there is a clear answer, cite the URL source and concisely summarize the relevant part of the title and content as the final answer. 
+        4. If there is no clear answer, return all the URLs in a list as the final answer
 
         Search Results:
         {context}
@@ -813,7 +822,6 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         Question:
         {question}
 
-        For citing sources, use the following format: (Source: URL)
         """
 
         PROMPT = PromptTemplate(
@@ -832,7 +840,7 @@ class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
             temperature=0, 
-            streaming=True,
+            streaming=False,
             model_name="gpt-3.5-turbo",
             max_tokens=500
             )
@@ -912,21 +920,20 @@ class MRKL:
         # Memory
         chat_msg = StreamlitChatMessageHistory(key="mrkl_chat_history")
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=3000, chat_memory=chat_msg)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=2500, chat_memory=chat_msg)
         st.session_state.history = memory
 
         system_message_content = """
         You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
-        
-        You have the following tools to answer user queries, but only use them if necessary.
+
+        You have the following tools to answer user queries, but only use them if necessary. 
 
         Your primary objective is to provide responses that:
-        1. Offer an overview of the topic, referencing the chapter and the section if relevant
+        1. Offer an overview of the topic, referencing the chapter and the section if relevant.
         2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
         3. Always match or exceed the details of the tool's output text in your answers. 
         4. Reflect back to the user's question and give a concise conclusion.
-        
-        You must maintain a professional and helpful demeanor in all interactions.
+        5. If the search tool is used, you must always return the list of avaiable URLs as part of your final answer. 
         """
 
         # System Message
@@ -968,10 +975,6 @@ class MRKL:
 
 def main():
 
-    if "openai_key" not in st.session_state or not st.session_state.openai_key:
-        st.error("Please enter the OpenAI API key in the Configuration tab before proceeding.")
-
-    else:
         load_dotenv()
         pinecone.init(
             api_key=os.environ["PINECONE_API_KEY"], environment=os.environ["PINECONE_ENV"]
@@ -1035,7 +1038,14 @@ def main():
                 st.session_state.web_search = web_search_toggle
                 st.session_state.agent = MRKL()
 
-            if st.session_state.web_search:
+            if web_search_toggle:
+                selected_num_results = st.slider(
+                    "Select Number of Search Results:",
+                    min_value=1,
+                    max_value=5,
+                    value=2
+                    )
+                st.session_state.websearch_results = selected_num_results
                 st.success("Web Search is Enabled.")
 
             st.sidebar.title("Upload Document to Database")
@@ -1117,56 +1127,56 @@ def main():
             else:
                 st.warning("No PDF uploaded. Please upload and a process a PDF in the sidebar.")
         
-        with st.container():
-            if user_input := st.chat_input("Type something here..."):
-                st.session_state.user_input = user_input
-                st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
-                st.chat_message("user").write(st.session_state.user_input)
 
-                with st.chat_message("assistant"):
-                    st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
-                    result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
-                    st.session_state.result = result
-                    response = result.get('output', '')
-                    st.session_state.messages.append({"roles": "assistant", "content": response})
-                    st.write(response)
+        if user_input := st.chat_input("Type something here..."):
+            st.session_state.user_input = user_input
+            st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
+            st.chat_message("user").write(st.session_state.user_input)
+
+            with st.chat_message("assistant"):
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
+                result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+                st.session_state.result = result
+                response = result.get('output', '')
+                st.session_state.messages.append({"roles": "assistant", "content": response})
+                st.write(response)
 
 
-            #with st.expander("Cost Tracking", expanded=True):
-                #total_token = st.session_state.token_count
-                #st.write(total_token)
+        #with st.expander("Cost Tracking", expanded=True):
+            #total_token = st.session_state.token_count
+            #st.write(total_token)
 
-            st.divider()
-            buttons_placeholder = st.container()
-            with buttons_placeholder:
-                #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-                st.button("Clear Chat", key="clear", on_click=reset_chat)
+        st.divider()
+        buttons_placeholder = st.container()
+        with buttons_placeholder:
+            #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
+            st.button("Clear Chat", key="clear", on_click=reset_chat)
 
-                relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
-                if st.session_state.doc_sources:
-                    content = []
-                    for document in st.session_state.doc_sources:
-                        doc_dict = {
-                            "page_content": document.page_content,
-                            "metadata": {}
-                        }
-                        for key in relevant_keys:
-                            value = document.metadata.get(key, 'N/A')
-                            if value != 'N/A':
-                                doc_dict["metadata"][key] = value
-                        content.append(doc_dict)
-                    
-                    customstoggle(
-                        "Source Documents",
-                        content,
-                        metadata_keys=relevant_keys
-                    )
+            relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
+            if st.session_state.doc_sources:
+                content = []
+                for document in st.session_state.doc_sources:
+                    doc_dict = {
+                        "page_content": document.page_content,
+                        "metadata": {}
+                    }
+                    for key in relevant_keys:
+                        value = document.metadata.get(key, 'N/A')
+                        if value != 'N/A':
+                            doc_dict["metadata"][key] = value
+                    content.append(doc_dict)
+                
+                customstoggle(
+                    "Source Documents",
+                    content,
+                    metadata_keys=relevant_keys
+                )
 
-            if st.session_state.summary is not None:
-                with st.expander("Show Summary"):
-                    st.subheader("Summarization")
-                    result_summary = st.session_state.summary
-                    st.write(result_summary)
+        if st.session_state.summary is not None:
+            with st.expander("Show Summary"):
+                st.subheader("Summarization")
+                result_summary = st.session_state.summary
+                st.write(result_summary)
 
         #st.write(st.session_state.history)
         #st.write(st.session_state.messages)
