@@ -814,7 +814,7 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         1. Priotize looking into content of the URL, then the title and then the actual content of the URL. 
         2. Retrieve the most detailed and relevant information extracted from each URLs to the query 
         3. If there is a clear answer, cite the URL source and concisely summarize the relevant part of the title and content as the final answer. 
-        4. If there is no clear answer, return all the URLs in a list as the final answer
+        4. If there is no clear answer, return all the URLs in a list as the final answer even if the answer is unclear. 
 
         Search Results:
         {context}
