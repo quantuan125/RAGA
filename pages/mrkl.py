@@ -840,7 +840,7 @@ class MRKL:
     def __init__(self):
         self.llm = ChatOpenAI(
             temperature=0, 
-            streaming=False,
+            streaming=True,
             model_name="gpt-3.5-turbo",
             max_tokens=500
             )
