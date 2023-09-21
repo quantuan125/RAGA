@@ -1048,15 +1048,6 @@ def main():
             - View your uploaded PDFs here. This tab only appears when a document is processed.
             """)
             
-            colored_header(label="🎯 Objective & Tips", color_name="violet-70", description="")
-            
-            st.markdown("""
-            - **Objective**: MRKL aims to provide concise and detailed responses, using the tools only when necessary.
-            - **Tips**: 
-                - Document Database: The more detailed the filename and metadata (like title, author) of the uploaded document, the better MRKL understands it.
-                - Web Search: The lower number the results, the faster the search process
-            """)
-            
             colored_header(label="📜 SYSTEM PROMPT", color_name="yellow-70", description="")
             
             st.markdown("""
