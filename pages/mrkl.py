@@ -1075,8 +1075,8 @@ def main():
             colored_header(label="🔗 Links", color_name="blue-green-70", description="")
             
             st.markdown("""
-            - For any further assistance or more information. Contact <a href="mailto:qung@arkitema.com">qung@arkitema.com</a>.
-            """, unsafe_allow_html=True)
+            - For any further assistance or more information. Contact "qung@arkitema.com"
+            """)
         
         with st.sidebar:
             br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
