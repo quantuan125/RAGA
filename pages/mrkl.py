@@ -50,11 +50,12 @@ import pickle
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from datetime import datetime
-from streamlit_extras.stoggle import stoggle
 from UI.customstoggle import customstoggle
 import base64
 import pytz
 from UI.css import apply_css
+from streamlit_extras.colored_header import colored_header
+
 
 langchain.debug = True
 langchain.verbose = True
@@ -1011,12 +1012,67 @@ def main():
             if "agent" not in st.session_state:
                 st.session_state.agent = MRKL()
 
-        with st.expander("General Info", expanded = False):
-            st.write("""
-                - Google Search 
-                - Document Database
-                - BR18 Database
-                """)
+        with st.expander("READ ME BEFORE USING! 📘", expanded=False):
+            st.markdown("""
+            ## Welcome to MRKL AGENT! 🦜️
+            MRKL is powered by **gpt-3.5-turbo**, specializing in construction, legal frameworks, and regulatory matters. 
+            
+            Below is a guide to help you navigate and understand the functionalities of this application better.
+            """)
+            
+            colored_header(label="🛠️ Functionalities", color_name="blue-70", description="")
+            
+            st.markdown("""
+            #### 1. **BR18 Feature** (Experimental)
+            - **Enable BR18**: Integrate BR18 as part of MRKL's internal knowledge. You can toggle this feature in the sidebar.
+            - **Search Types**:
+                - **Header Search**: Searches by the headers in BR18. Recommend for specific queries
+                - **Context Search**: Searches by content of paragraphs in BR18. Recommend for general queries
+
+            #### 2. **Web Search Feature** (Experimental)
+            - **Enable Web Search**: Integrate Google Search with up to 5 top results. You can adjust the number of results in the sidebar.
+
+            #### 3. **Document Database**
+            - **Upload & Process Document**: Upload PDFs as unstructured text and process them for MRKL to understand. Only one document can be processed at a time.
+            - **Create Detailed Summary**: After processing a document, you can create a detailed summary of it. This might take 1-2 minutes.
+            """)
+            
+            colored_header(label="📑 UI Interface", color_name="orange-70", description="")
+            
+            st.markdown("""
+            #### 1. **Main Chat**: 
+            - **View Source/Search Results**: Examine the results used by MRKL to produce its final answer.
+            - **Clear Chat**: Resets the chat interface but does not reset functionalities.
+                        
+            #### 2. **PDF Display**: 
+            - View your uploaded PDFs here. This tab only appears when a document is processed.
+            """)
+            
+            colored_header(label="🎯 Objective & Tips", color_name="violet-70", description="")
+            
+            st.markdown("""
+            - **Objective**: MRKL aims to provide concise and detailed responses, using the tools only when necessary.
+            - **Tips**: 
+                - Document Database: The more detailed the filename and metadata (like title, author) of the uploaded document, the better MRKL understands it.
+                - Web Search: The lower number the results, the faster the search process
+            """)
+            
+            colored_header(label="📜 Prompt Guidelines", color_name="yellow-70", description="")
+            
+            st.markdown("""
+            MRKL operates under the following guidelines:
+            - Offer concise overviews of topics, referencing chapters and sections if relevant.
+            - List key points in bullet-points or numbered lists, referencing clauses and subclauses if relevant.
+            - Reflect back to the user's question and give a concise conclusion.
+            - If the search tool is used, always return the list of available URLs as part of the final answer.
+            - Always self-reflect your answer based on the user's query and adhere to the response objectives.
+            """)
+            
+            colored_header(label="🔗 Links", color_name="blue-green-70", description="")
+            
+            st.markdown("""
+            - For any further assistance or more information. Contact <a href="mailto:qung@arkitema.com">qung@arkitema.com</a>.
+            """, unsafe_allow_html=True)
         
         with st.sidebar:
             br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
