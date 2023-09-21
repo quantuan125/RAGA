@@ -17,7 +17,7 @@ with st.empty():
 
 show_pages(
     [   
-        Page("app.py", "Home", "🏠"),
+        Page("app.py", "About", "🏠"),
         Page("pages/configuration.py", "Configuration", "⚙️"),
         Page("pages/mrkl.py", "Main Chat", "🦜️"),
         Page("pages/br18.py", "BR18", "📚")
