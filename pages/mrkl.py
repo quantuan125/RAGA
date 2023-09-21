@@ -1057,15 +1057,28 @@ def main():
                 - Web Search: The lower number the results, the faster the search process
             """)
             
-            colored_header(label="📜 Prompt Guidelines", color_name="yellow-70", description="")
+            colored_header(label="📜 SYSTEM PROMPT", color_name="yellow-70", description="")
             
             st.markdown("""
-            MRKL operates under the following guidelines:
-            - Offer concise overviews of topics, referencing chapters and sections if relevant.
-            - List key points in bullet-points or numbered lists, referencing clauses and subclauses if relevant.
-            - Reflect back to the user's question and give a concise conclusion.
-            - If the search tool is used, always return the list of available URLs as part of the final answer.
-            - Always self-reflect your answer based on the user's query and adhere to the response objectives.
+            For transparency, here is the initial prompt engineered for MRKL:
+
+            ```
+            You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
+
+            You have the following tools to answer user queries, but only use them if necessary. 
+
+            Your primary objective is to provide responses that:
+            1. Offer an overview of the topic, referencing the chapter and the section if relevant.
+            2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
+            3. Always match or exceed the details of the tool's output text in your answers. 
+            4. Reflect back to the user's question and give a concise conclusion.
+            5. If the search tool is used, you must always return the list of available URLs as part of your final answer. 
+
+            Reminder: 
+            Always try all your tools to find the answer to the user query
+
+            Always self-reflect your answer based on the user's query and follows the list of response objective. 
+            ```
             """)
             
             colored_header(label="🔗 Links", color_name="blue-green-70", description="")
@@ -1223,7 +1236,7 @@ def main():
                     content.append(doc_dict)
                 
                 customstoggle(
-                    "Source Documents",
+                    "Source Documents/Searched Links",
                     content,
                     metadata_keys=relevant_keys
                 )
