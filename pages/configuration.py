@@ -23,7 +23,7 @@ def main():
         if st.button("Proceed to Main Chat"):
             switch_page("Main Chat")
     else:
-        st.info("Enter your [OpenAI API key](https://platform.openai.com/account/api-keys) here")
+        st.info("Enter your OpenAI API key in the text box above and press 'Enter'. You can obtain the API key [here](https://platform.openai.com/account/api-keys)")
 
 
 if __name__== '__main__':

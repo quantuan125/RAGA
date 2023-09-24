@@ -925,7 +925,7 @@ class MRKL:
         st.session_state.history = memory
 
         system_message_content = """
-        You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
+        You are Miracle, an expert in construction, legal frameworks, and regulatory matters.
 
         You have the following tools to answer user queries, but only use them if necessary. 
 
@@ -976,13 +976,17 @@ class MRKL:
 
 def main():
 
+    if "openai_key" not in st.session_state or not st.session_state.openai_key:
+        st.error("Please enter the OpenAI API key in the Configuration tab before proceeding.")
+
+    else:
         load_dotenv()
         pinecone.init(
             api_key=os.environ["PINECONE_API_KEY"], environment=os.environ["PINECONE_ENV"]
             )
-        st.set_page_config(page_title="MRKL AGENT", page_icon="🦜️", layout="wide")
+        st.set_page_config(page_title="MIRACLE AGENT", page_icon="🦜️", layout="wide")
         apply_css()
-        st.title("MRKL AGENT 🦜️")
+        st.title("MIRACLE AGENT 🦜️")
 
         with st.empty():
             if "messages" not in st.session_state:
@@ -1014,8 +1018,8 @@ def main():
 
         with st.expander("READ ME BEFORE USING! 📘", expanded=False):
             st.markdown("""
-            ## Welcome to MRKL AGENT! 🦜️
-            MRKL is powered by **gpt-3.5-turbo**, specializing in construction, legal frameworks, and regulatory matters. 
+            ## 🦜️ Welcome to Miracle! 
+            Miracle is powered by **gpt-3.5-turbo**, specializing in construction, legal frameworks, and regulatory matters. 
             
             Below is a guide to help you navigate and understand the functionalities of this application better.
             """)
@@ -1024,7 +1028,7 @@ def main():
             
             st.markdown("""
             #### 1. **BR18 Feature** (Experimental)
-            - **Enable BR18**: Integrate BR18 as part of MRKL's internal knowledge. You can toggle this feature in the sidebar.
+            - **Enable BR18**: Integrate BR18 as part of Miracle's internal knowledge. You can toggle this feature in the sidebar.
             - **Search Types**:
                 - **Header Search**: Searches by the headers in BR18. Recommend for specific queries
                 - **Context Search**: Searches by content of paragraphs in BR18. Recommend for general queries
@@ -1033,7 +1037,7 @@ def main():
             - **Enable Web Search**: Integrate Google Search with up to 5 top results. You can adjust the number of results in the sidebar.
 
             #### 3. **Document Database**
-            - **Upload & Process Document**: Upload PDFs as unstructured text and process them for MRKL to understand. Only one document can be processed at a time.
+            - **Upload & Process Document**: Upload PDFs as unstructured text and process them for Miracle to understand. Only one document can be processed at a time.
             - **Create Detailed Summary**: After processing a document, you can create a detailed summary of it. This might take 1-2 minutes.
             """)
             
@@ -1041,7 +1045,7 @@ def main():
             
             st.markdown("""
             #### 1. **Main Chat**: 
-            - **View Source/Search Results**: Examine the results used by MRKL to produce its final answer.
+            - **View Source/Search Results**: Examine the results used by Miracle to produce its final answer.
             - **Clear Chat**: Resets the chat interface but does not reset functionalities.
                         
             #### 2. **PDF Display**: 
@@ -1051,10 +1055,10 @@ def main():
             colored_header(label="📜 SYSTEM PROMPT", color_name="yellow-70", description="")
             
             st.markdown("""
-            For transparency, here is the initial prompt engineered for MRKL:
+            For transparency, here is the initial prompt engineered for Miracle:
 
             ```
-            You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
+            You are Miracle, an expert in construction, legal frameworks, and regulatory matters.
 
             You have the following tools to answer user queries, but only use them if necessary. 
 
@@ -1075,8 +1079,8 @@ def main():
             colored_header(label="🔗 Links", color_name="blue-green-70", description="")
             
             st.markdown("""
-            - For any further assistance or more information. Contact "qung@arkitema.com"
-            """)
+            - For any further assistance or more information, please contact <a href="mailto:qung@arkitema.com">qung@arkitema.com</a>.
+            """, unsafe_allow_html=True)
         
         with st.sidebar:
             br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
@@ -1194,12 +1198,11 @@ def main():
             st.chat_message("user").write(st.session_state.user_input)
 
             with st.chat_message("assistant"):
-                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True, collapse_completed_thoughts = False)
                 result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
                 st.session_state.result = result
                 response = result.get('output', '')
                 st.session_state.messages.append({"roles": "assistant", "content": response})
-                st.write(response)
 
 
         #with st.expander("Cost Tracking", expanded=True):
