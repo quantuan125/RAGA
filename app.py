@@ -70,7 +70,7 @@ In every interaction, Miracle maintains a high standard of professionalism while
 ### Your Feedback Matters
          
 
-Since miracle is not perfect and is still evolving, your feedback will be invaluable to us as it represents an integral part of COWI-ARKITEMA's ambitious journey towards digital transformation. 
+Since Miracle is still evolving and not yet ready for production, your feedback will be invaluable to us. Please let us know how we can improve Miracle to best fits with your experience and needs
          
 """)
 
