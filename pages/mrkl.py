@@ -1198,7 +1198,7 @@ def main():
             st.chat_message("user").write(st.session_state.user_input)
 
             with st.chat_message("assistant"):
-                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True, collapse_completed_thoughts = False)
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True, collapse_completed_thoughts = False, max_thought_containers = 1)
                 result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
                 st.session_state.result = result
                 response = result.get('output', '')
