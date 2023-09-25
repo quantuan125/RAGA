@@ -1,6 +1,8 @@
 import os
 import re
+import openai
 from dotenv import load_dotenv
+from langchain.llms import OpenAI
 from langchain.chat_models import ChatOpenAI
 from langchain.agents import Tool, AgentExecutor
 from langchain.callbacks import StreamlitCallbackHandler
@@ -773,11 +775,6 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         return formatted_search_results, metadata_results
     
     def run(self, query: str, num_results: int = 3):
-        llm = ChatOpenAI(
-            temperature=0, 
-            model_name="gpt-3.5-turbo",
-            max_tokens=300
-            )
         
         num_results = st.session_state.websearch_results
 
@@ -787,35 +784,50 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         #st.write(metadata_results)
 
         search_results = []
+        context = ""
         for i, formatted_result in enumerate(formatted_search_results):
+            title = metadata_results[i].get('title', '')
+            url = metadata_results[i].get('url', '')
+            
             doc = Document(
-                page_content=formatted_result, # You can replace this with 'content' if you have the actual content
+                page_content=formatted_result,  # This contains the formatted result with title, URL, and content
                 metadata={
-                'source': 'Google Search',
-                'title': metadata_results[i].get('title', ''),
-                'snippet': metadata_results[i].get('snippet', '')
+                    'source': 'Google Search',
+                    'title': title,
+                    'url': url
                 }
             )
+            
             search_results.append(doc)
+            context += f"{formatted_result}\n\n"
 
-        #st.write(search_results)
+        st.session_state.doc_sources = search_results
+
+        print(context)
+
+        question = query
 
         # Fetch current local time
         copenhagen_tz = pytz.timezone('Europe/Copenhagen')
         current_time = datetime.now(copenhagen_tz).strftime('%Y-%m-%dT%H:%M:%S%z')
 
         # Step 2: Create a new prompt template
-        prompt_template = """
+        prompt_template = f"""
         For your reference, your local date and time is {current_time}.
 
-        Use the following pieces of context, which are search results from the internet to retrieve the information that best answer the question at the end. 
-        The search results include a title and a snippet of content extracted from the corresponding URL. 
+        You are a retriever model, and your task is to extract the most relevant and detailed information from the provided search results to aid in answering the query at the end.
+        Each search result is comprised of a URL, a title, and the actual content from the corresponding URL.
 
-        Your answer should:
-        1. Priotize looking into content of the URL, then the title and then the actual content of the URL. 
-        2. Retrieve the most detailed and relevant information extracted from each URLs to the query 
-        3. If there is a clear answer, cite the URL source and concisely summarize the relevant part of the title and content as the final answer. 
-        4. If there is no clear answer, return all the URLs in a list as the final answer even if the answer is unclear. 
+        Your tasks are to:
+        1. Priotize looking into the URL's text, then the title and then the actual content of the URL. 
+        2. Extract the most detailed and relevant information from each URLs to the query and organized them in coherent sentences
+        3. If a clear answer is found, provide this detailed and coherent information as the final answer
+        4. If there is no clear answer, return all the URLs in a list as the final answer and mention that additional research is required.
+
+        You must begin your answer with "Result:" and follow this format structure:
+        URL: [URL]
+        TITLE: [Title]
+        CONTENT: [Extracted Detailed Information] 
 
         Search Results:
         {context}
@@ -825,15 +837,24 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
 
         """
 
-        PROMPT = PromptTemplate(
-            template=prompt_template, input_variables=["context", "question", "current_time"]
-        )
+        try:
+            response = openai.Completion.create(
+                engine="gpt-3.5-turbo-instruct",  
+                prompt=prompt_template,
+                max_tokens=300,  # You can adjust as needed
+                temperature=0  # You can adjust as needed
+            )
 
-        # Step 3: Load the QA chain and generate an answer
-        qa_chain = load_qa_chain(llm=llm, chain_type="stuff", verbose=True, prompt=PROMPT)
-        output = qa_chain({"input_documents": search_results, "question": query, "current_time": current_time}, return_only_outputs=True)
+            # Extract and Process the Response
+            output = response.choices[0].text.strip()
 
-        st.session_state.doc_sources = search_results
+        except openai.error.OpenAIError as e:
+            # Handle the exception according to your needs.
+            st.error(f"Error: {e}")
+            output = None
+        
+        
+        print(output)
 
         return output
     
@@ -976,10 +997,6 @@ class MRKL:
 
 def main():
 
-    if "openai_key" not in st.session_state or not st.session_state.openai_key:
-        st.error("Please enter the OpenAI API key in the Configuration tab before proceeding.")
-
-    else:
         load_dotenv()
         pinecone.init(
             api_key=os.environ["PINECONE_API_KEY"], environment=os.environ["PINECONE_ENV"]
@@ -1198,7 +1215,7 @@ def main():
             st.chat_message("user").write(st.session_state.user_input)
 
             with st.chat_message("assistant"):
-                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True, collapse_completed_thoughts = False)
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True, collapse_completed_thoughts = False, max_thought_containers = 1)
                 result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
                 st.session_state.result = result
                 response = result.get('output', '')
@@ -1247,7 +1264,7 @@ def main():
         #st.write(st.session_state.br18_appendix_child_vectorstore)
         #st.write(st.session_state.usc_vectorstore)
         #st.write(st.session_state.agent)
-        #st.write(st.session_state.result)
+        st.write(st.session_state.result)
 
 
 if __name__== '__main__':
