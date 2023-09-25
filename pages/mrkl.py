@@ -50,10 +50,12 @@ import pickle
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 from datetime import datetime
-from streamlit_extras.stoggle import stoggle
 from UI.customstoggle import customstoggle
 import base64
+import pytz
 from UI.css import apply_css
+from streamlit_extras.colored_header import colored_header
+
 
 langchain.debug = True
 langchain.verbose = True
@@ -737,16 +739,20 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
             soup = BeautifulSoup(data[0].page_content, "html.parser")
             text = soup.get_text()
             cleaned_text = self.clean_text(text)
-            return {'url': url, 'title': title, 'content': cleaned_text[:1000]}  # Return first 1000 non-space characters
+            char_limit = 1000  # default for Detailed Search
+            websearch_results = st.session_state.websearch_results
+            if websearch_results == "Quick Search":
+                char_limit = 500
+
+            return {'url': url, 'title': title, 'content': cleaned_text[:char_limit]}
+        
         return {'url': url, 'title': title, 'content': ''}
     
-
     def format_single_search_result(self, search_result: Dict) -> str:
         # Formatting the output text
         formatted_text = f"URL: {search_result['url']}\n\nTITLE: {search_result['title']}\n\nCONTENT: {search_result['content']}\n\n"
         return formatted_text
 
-    
     def fetch_and_scrape(self, query: str, num_results: int = 3) -> Tuple[List[Dict], List[Dict]]:
         # Step 1: Fetch search results metadata
         metadata_results = self.results(query, num_results)
@@ -772,6 +778,8 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
             model_name="gpt-3.5-turbo",
             max_tokens=300
             )
+        
+        num_results = st.session_state.websearch_results
 
         # Step 1: Fetch and format the search results
         formatted_search_results, metadata_results = self.fetch_and_scrape(query, num_results)
@@ -793,19 +801,21 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         #st.write(search_results)
 
         # Fetch current local time
-        current_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%S%z')
+        copenhagen_tz = pytz.timezone('Europe/Copenhagen')
+        current_time = datetime.now(copenhagen_tz).strftime('%Y-%m-%dT%H:%M:%S%z')
 
         # Step 2: Create a new prompt template
         prompt_template = """
-        For your reference, your local date and time is {current_time} and you are in Denmark. 
-        Use the following pieces of context, which are search results from the internet, to answer the question at the end. The search results include URLs and their corresponding title and content.
+        For your reference, your local date and time is {current_time}.
+
+        Use the following pieces of context, which are search results from the internet to retrieve the information that best answer the question at the end. 
+        The search results include a title and a snippet of content extracted from the corresponding URL. 
+
         Your answer should:
-        1. Retrieve the most detailed and relevant information to the query from the relevant URL.
-        2. Cite the sources by mentioning the corresponding URL.
-
-        Always return values following the metric system and European Standard. 
-
-        Note: If the search results do not contain the information needed to answer the question, or if you are unsure about the answer, state that explicitly. Do not try to make up an answer.
+        1. Priotize looking into content of the URL, then the title and then the actual content of the URL. 
+        2. Retrieve the most detailed and relevant information extracted from each URLs to the query 
+        3. If there is a clear answer, cite the URL source and concisely summarize the relevant part of the title and content as the final answer. 
+        4. If there is no clear answer, return all the URLs in a list as the final answer even if the answer is unclear. 
 
         Search Results:
         {context}
@@ -813,7 +823,6 @@ class CustomGoogleSearchAPIWrapper(GoogleSearchAPIWrapper):
         Question:
         {question}
 
-        For citing sources, use the following format: (Source: URL)
         """
 
         PROMPT = PromptTemplate(
@@ -912,21 +921,20 @@ class MRKL:
         # Memory
         chat_msg = StreamlitChatMessageHistory(key="mrkl_chat_history")
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=3000, chat_memory=chat_msg)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=2500, chat_memory=chat_msg)
         st.session_state.history = memory
 
         system_message_content = """
-        You are MRKL, an expert in construction, legal frameworks, and regulatory matters.
-        
-        You have the following tools to answer user queries, but only use them if necessary.
+        You are Miracle, an expert in construction, legal frameworks, and regulatory matters.
+
+        You have the following tools to answer user queries, but only use them if necessary. 
 
         Your primary objective is to provide responses that:
-        1. Offer an overview of the topic, referencing the chapter and the section if relevant
+        1. Offer an overview of the topic, referencing the chapter and the section if relevant.
         2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
         3. Always match or exceed the details of the tool's output text in your answers. 
         4. Reflect back to the user's question and give a concise conclusion.
-        
-        You must maintain a professional and helpful demeanor in all interactions.
+        5. If the search tool is used, you must always return the list of avaiable URLs as part of your final answer. 
         """
 
         # System Message
@@ -976,9 +984,9 @@ def main():
         pinecone.init(
             api_key=os.environ["PINECONE_API_KEY"], environment=os.environ["PINECONE_ENV"]
             )
-        st.set_page_config(page_title="MRKL AGENT", page_icon="🦜️", layout="wide")
+        st.set_page_config(page_title="MIRACLE AGENT", page_icon="🦜️", layout="wide")
         apply_css()
-        st.title("MRKL AGENT 🦜️")
+        st.title("MIRACLE AGENT 🦜️")
 
         with st.empty():
             if "messages" not in st.session_state:
@@ -1008,12 +1016,71 @@ def main():
             if "agent" not in st.session_state:
                 st.session_state.agent = MRKL()
 
-        with st.expander("General Info", expanded = False):
-            st.write("""
-                - Google Search 
-                - Document Database
-                - BR18 Database
-                """)
+        with st.expander("READ ME BEFORE USING! 📘", expanded=False):
+            st.markdown("""
+            ## 🦜️ Welcome to Miracle! 
+            Miracle is powered by **gpt-3.5-turbo**, specializing in construction, legal frameworks, and regulatory matters. 
+            
+            Below is a guide to help you navigate and understand the functionalities of this application better.
+            """)
+            
+            colored_header(label="🛠️ Functionalities", color_name="blue-70", description="")
+            
+            st.markdown("""
+            #### 1. **BR18 Feature** (Experimental)
+            - **Enable BR18**: Integrate BR18 as part of Miracle's internal knowledge. You can toggle this feature in the sidebar.
+            - **Search Types**:
+                - **Header Search**: Searches by the headers in BR18. Recommend for specific queries
+                - **Context Search**: Searches by content of paragraphs in BR18. Recommend for general queries
+
+            #### 2. **Web Search Feature** (Experimental)
+            - **Enable Web Search**: Integrate Google Search with up to 5 top results. You can adjust the number of results in the sidebar.
+
+            #### 3. **Document Database**
+            - **Upload & Process Document**: Upload PDFs as unstructured text and process them for Miracle to understand. Only one document can be processed at a time.
+            - **Create Detailed Summary**: After processing a document, you can create a detailed summary of it. This might take 1-2 minutes.
+            """)
+            
+            colored_header(label="📑 UI Interface", color_name="orange-70", description="")
+            
+            st.markdown("""
+            #### 1. **Main Chat**: 
+            - **View Source/Search Results**: Examine the results used by Miracle to produce its final answer.
+            - **Clear Chat**: Resets the chat interface but does not reset functionalities.
+                        
+            #### 2. **PDF Display**: 
+            - View your uploaded PDFs here. This tab only appears when a document is processed.
+            """)
+            
+            colored_header(label="📜 SYSTEM PROMPT", color_name="yellow-70", description="")
+            
+            st.markdown("""
+            For transparency, here is the initial prompt engineered for Miracle:
+
+            ```
+            You are Miracle, an expert in construction, legal frameworks, and regulatory matters.
+
+            You have the following tools to answer user queries, but only use them if necessary. 
+
+            Your primary objective is to provide responses that:
+            1. Offer an overview of the topic, referencing the chapter and the section if relevant.
+            2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
+            3. Always match or exceed the details of the tool's output text in your answers. 
+            4. Reflect back to the user's question and give a concise conclusion.
+            5. If the search tool is used, you must always return the list of available URLs as part of your final answer. 
+
+            Reminder: 
+            Always try all your tools to find the answer to the user query
+
+            Always self-reflect your answer based on the user's query and follows the list of response objective. 
+            ```
+            """)
+            
+            colored_header(label="🔗 Links", color_name="blue-green-70", description="")
+            
+            st.markdown("""
+            - For any further assistance or more information, please contact <a href="mailto:qung@arkitema.com">qung@arkitema.com</a>.
+            """, unsafe_allow_html=True)
         
         with st.sidebar:
             br18_experiment = st.checkbox(label = "Experimental Feature: Enable BR18", value=False, help="Toggle to enable or disable BR18 knowledge.")
@@ -1035,7 +1102,14 @@ def main():
                 st.session_state.web_search = web_search_toggle
                 st.session_state.agent = MRKL()
 
-            if st.session_state.web_search:
+            if web_search_toggle:
+                selected_num_results = st.slider(
+                    "Select Number of Search Results:",
+                    min_value=1,
+                    max_value=5,
+                    value=2
+                    )
+                st.session_state.websearch_results = selected_num_results
                 st.success("Web Search is Enabled.")
 
             st.sidebar.title("Upload Document to Database")
@@ -1117,56 +1191,55 @@ def main():
             else:
                 st.warning("No PDF uploaded. Please upload and a process a PDF in the sidebar.")
         
-        with st.container():
-            if user_input := st.chat_input("Type something here..."):
-                st.session_state.user_input = user_input
-                st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
-                st.chat_message("user").write(st.session_state.user_input)
 
-                with st.chat_message("assistant"):
-                    st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True)
-                    result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
-                    st.session_state.result = result
-                    response = result.get('output', '')
-                    st.session_state.messages.append({"roles": "assistant", "content": response})
-                    st.write(response)
+        if user_input := st.chat_input("Type something here..."):
+            st.session_state.user_input = user_input
+            st.session_state.messages.append({"roles": "user", "content": st.session_state.user_input})
+            st.chat_message("user").write(st.session_state.user_input)
+
+            with st.chat_message("assistant"):
+                st_callback = StreamlitCallbackHandler(st.container(), expand_new_thoughts=True, collapse_completed_thoughts = False)
+                result = st.session_state.agent.run_agent(input=st.session_state.user_input, callbacks=[st_callback])
+                st.session_state.result = result
+                response = result.get('output', '')
+                st.session_state.messages.append({"roles": "assistant", "content": response})
 
 
-            #with st.expander("Cost Tracking", expanded=True):
-                #total_token = st.session_state.token_count
-                #st.write(total_token)
+        #with st.expander("Cost Tracking", expanded=True):
+            #total_token = st.session_state.token_count
+            #st.write(total_token)
 
-            st.divider()
-            buttons_placeholder = st.container()
-            with buttons_placeholder:
-                #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
-                st.button("Clear Chat", key="clear", on_click=reset_chat)
+        st.divider()
+        buttons_placeholder = st.container()
+        with buttons_placeholder:
+            #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
+            st.button("Clear Chat", key="clear", on_click=reset_chat)
 
-                relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
-                if st.session_state.doc_sources:
-                    content = []
-                    for document in st.session_state.doc_sources:
-                        doc_dict = {
-                            "page_content": document.page_content,
-                            "metadata": {}
-                        }
-                        for key in relevant_keys:
-                            value = document.metadata.get(key, 'N/A')
-                            if value != 'N/A':
-                                doc_dict["metadata"][key] = value
-                        content.append(doc_dict)
-                    
-                    customstoggle(
-                        "Source Documents",
-                        content,
-                        metadata_keys=relevant_keys
-                    )
+            relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
+            if st.session_state.doc_sources:
+                content = []
+                for document in st.session_state.doc_sources:
+                    doc_dict = {
+                        "page_content": document.page_content,
+                        "metadata": {}
+                    }
+                    for key in relevant_keys:
+                        value = document.metadata.get(key, 'N/A')
+                        if value != 'N/A':
+                            doc_dict["metadata"][key] = value
+                    content.append(doc_dict)
+                
+                customstoggle(
+                    "Source Documents/Searched Links",
+                    content,
+                    metadata_keys=relevant_keys
+                )
 
-            if st.session_state.summary is not None:
-                with st.expander("Show Summary"):
-                    st.subheader("Summarization")
-                    result_summary = st.session_state.summary
-                    st.write(result_summary)
+        if st.session_state.summary is not None:
+            with st.expander("Show Summary"):
+                st.subheader("Summarization")
+                result_summary = st.session_state.summary
+                st.write(result_summary)
 
         #st.write(st.session_state.history)
         #st.write(st.session_state.messages)
