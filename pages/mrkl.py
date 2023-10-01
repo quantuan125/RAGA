@@ -57,6 +57,13 @@ import base64
 import pytz
 from UI.css import apply_css
 from streamlit_extras.colored_header import colored_header
+import boto3
+from botocore.exceptions import NoCredentialsError
+import chromadb
+from chromadb.config import Settings
+from utility.client import ClientDB
+
+
 
 
 langchain.debug = True
@@ -95,7 +102,10 @@ class DBStore:
         self.reader = pypdf.PdfReader(file_path)
         self.metadata = self.extract_metadata_from_pdf()
         self.embeddings = OpenAIEmbeddings()
-        self.vector_store = None
+
+
+        self.client = chromadb.HttpClient(settings=Settings(allow_reset=True))
+        self.collection_name = "project1"
 
     def extract_metadata_from_pdf(self):
         """Extract metadata from the PDF."""
@@ -167,6 +177,9 @@ class DBStore:
             )
             chunks = text_splitter.split_text(page)
             for i, chunk in enumerate(chunks):
+
+                doc_id = f"{self.file_name}_{uuid.uuid4()}"
+
                 doc = Document(
                     page_content=chunk,
                     metadata={
@@ -174,6 +187,7 @@ class DBStore:
                         "chunk": i,
                         "source": f"p{page_num}-{i}",
                         "file_name": self.file_name,
+                        "unique_id": doc_id,
                         **self.metadata,
                     },
                 )
@@ -189,10 +203,18 @@ class DBStore:
 
     def get_vectorstore(self):
         document_chunks = self.get_pdf_text()
-        #st.write(document_chunks)
-        vector_store = FAISS.from_documents(documents=document_chunks, embedding=self.embeddings)
-        #st.write(vector_store)
-        return vector_store
+
+        ids = [doc.metadata["unique_id"] for doc in document_chunks]
+
+        vectorstore = Chroma.from_documents(
+            documents=document_chunks, 
+            embedding=self.embeddings, 
+            ids=ids,
+            client=self.client, 
+            collection_name=self.collection_name
+        )
+        
+        return vectorstore
     
     def get_document_info(self):
         """
@@ -266,6 +288,9 @@ class DBStore:
         info_response = llm_response.get('text', '')
         #st.write(info_response)
         return info_response
+    
+    def reset_client(self):
+        self.client.reset()
    
 class DatabaseTool:
     def __init__(self, llm, vector_store, metadata=None, filename=None):
@@ -277,12 +302,16 @@ class DatabaseTool:
 
     def get_description(self):
         base_description = "Always useful for finding the exactly written answer to the question by looking into a collection of documents."
+        footer_description = "Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database. Use this more than the normal search tool"
+
+        if self.metadata is None and self.filename is None:
+            generic_description = "This tool is currently ready to search through the existing documents in the database."
+            return f"{base_description} {generic_description}. {footer_description}"
+        
         filename = self.filename
         title = self.metadata.get("/Title") if self.metadata else None
         author = self.metadata.get("/Author") if self.metadata else None
         subject = self.metadata.get("/Subject") if self.metadata else None
-
-        footer_description = "Input should be a query, not referencing any obscure pronouns from the conversation before that will pull out relevant information from the database. Use this more than the normal search tool"
 
         if title:
             main_description = f"This tool is currently loaded with '{title}'"
@@ -904,20 +933,20 @@ class MRKL:
             if existing_tool:
                 existing_tool.func = llm_search.disabled_function
 
-        if st.session_state.vector_store is not None:
-            metadata = st.session_state.document_metadata
-            file_name = st.session_state.document_filename
-            llm_database = DatabaseTool(llm=self.llm, vector_store=st.session_state.vector_store, metadata=metadata, filename=file_name)
+        metadata = getattr(st.session_state, 'document_metadata', None)
+        file_name = getattr(st.session_state, 'document_filename', None)    
+        vector_store = st.session_state.vector_store
+        llm_database = DatabaseTool(llm=self.llm, vector_store=vector_store, metadata=metadata, filename=file_name)
 
-            #st.write(llm_database.get_description())
+        #st.write(llm_database.get_description())
 
-            tools.append(
-                Tool(
-                    name='Document_Database',
-                    func=llm_database.run,
-                    description=llm_database.get_description(),
-                ),
-            )
+        tools.append(
+            Tool(
+                name='Document_Database',
+                func=llm_database.run,
+                description=llm_database.get_description(),
+            ),
+        )
 
         if st.session_state.br18_exp is True:
             br18_folder_path = os.path.join(current_directory, "BR18_DB")
@@ -994,6 +1023,43 @@ class MRKL:
             print(cb)
         return result
     
+def upload_to_s3(file_obj, bucket_name, s3_file_name):
+    # Initialize boto3 client with credentials from .env file
+    s3 = boto3.client('s3', 
+                      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+                      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+                      region_name=os.getenv("AWS_DEFAULT_REGION"))
+    try:
+        file_obj.seek(0)
+        s3.upload_fileobj(file_obj, bucket_name, s3_file_name, 
+                          ExtraArgs={'ContentType': 'application/pdf', 'ACL': 'public-read'})
+        print("Upload Successful")
+        return True
+    except NoCredentialsError:
+        print("Credentials not available")
+        return False
+    
+def ingest_documents_db(file, file_name):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+        tmpfile.write(file.getvalue())
+        temp_path = tmpfile.name
+        db_store = DBStore(temp_path, file_name)
+
+        st.session_state.pdf_file_path = temp_path
+        st.session_state.db_store = db_store
+
+        document_chunks = db_store.get_pdf_text()
+        st.session_state.document_chunks = document_chunks
+
+        vector_store = db_store.get_vectorstore()
+        st.session_state.vector_store = vector_store
+
+        st.session_state.agent = MRKL()
+
+        primed_info_response = db_store.get_info_response()
+        st.session_state.history.chat_memory.add_ai_message(primed_info_response)
+
+        st.session_state.messages.append({"roles": "assistant", "content": primed_info_response})
 
 def main():
 
@@ -1030,6 +1096,9 @@ def main():
                 st.session_state.web_search = False
             if 'show_info' not in st.session_state:
                 st.session_state.show_info = False
+            if 'client_db' not in st.session_state:
+                st.session_state.client_db = ClientDB(collection_name=None, load_vector_store=True)
+
             if "agent" not in st.session_state:
                 st.session_state.agent = MRKL()
 
@@ -1129,10 +1198,21 @@ def main():
                 st.session_state.websearch_results = selected_num_results
                 st.success("Web Search is Enabled.")
 
+            existing_collections = st.session_state.client_db.get_existing_collections()
+            if existing_collections:  # Check if there are any existing collections
+                selected_collection = st.selectbox('Select a collection:', existing_collections)
+                
+                if "selected_collection" not in st.session_state or st.session_state.selected_collection != selected_collection:
+                    st.session_state.selected_collection = selected_collection
+                    st.session_state.client_db = ClientDB(collection_name=selected_collection)
+                    st.session_state.agent = MRKL() 
+            else:
+                st.warning("No collections available.")
+
             st.sidebar.title("Upload Document to Database")
             uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
             if uploaded_files:
-                file_details = {"FileName": [], "FileType": [], "FileSize": []}
+                file_details = {"FileName": ["All Documents"], "FileType": [], "FileSize": []}
 
                 # Populate file_details using traditional loops
                 for file in uploaded_files:
@@ -1144,13 +1224,14 @@ def main():
                 selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
 
                 # Get the index of the file selected
-                file_index = file_details["FileName"].index(selected_file_name)
-
-                # Display details of the selected file
-                st.sidebar.write("You selected:")
-                st.sidebar.write("FileName : ", file_details["FileName"][file_index])
-                st.sidebar.write("FileType : ", file_details["FileType"][file_index])
-                st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
+                if selected_file_name != "All Documents":
+                    file_index = file_details["FileName"].index(selected_file_name) - 1
+                    st.sidebar.write("You selected:")
+                    st.sidebar.write("FileName : ", file_details["FileName"][file_index + 1])
+                    st.sidebar.write("FileType : ", file_details["FileType"][file_index])
+                    st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
+                else:
+                    st.sidebar.write("You selected all uploaded documents.")
 
                 # Add a note to remind the user to press the "Process" button
                 if st.session_state.show_info:
@@ -1160,28 +1241,13 @@ def main():
                 with st.sidebar:
                     if st.sidebar.button("Process"):
                         with st.spinner("Processing"):
-                            selected_file = uploaded_files[file_index]
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-                                tmpfile.write(selected_file.getvalue())
-                                temp_path = tmpfile.name
-                                db_store = DBStore(temp_path, selected_file.name)
-                                st.session_state.pdf_file_path = temp_path
-
-                                document_chunks = db_store.get_pdf_text()
-                                st.session_state.document_chunks = document_chunks
-                                #st.write(document_chunks)
-
-                                vector_store = db_store.get_vectorstore()
-                                st.session_state.vector_store = vector_store
-
-                                st.session_state.agent = MRKL()
-
-                                primed_info_response = db_store.get_info_response()
-                                #st.write(primed_info_response)
-                                st.session_state.history.chat_memory.add_ai_message(primed_info_response)
-
-                                st.session_state.messages.append({"roles": "assistant", "content": primed_info_response})
-                    
+                            if selected_file_name == "All Documents":
+                                for file in uploaded_files:
+                                    ingest_documents_db(file, file.name)
+                                    st.success(f"{file.name} uploaded successfully!")
+                            else:
+                                selected_file = uploaded_files[file_index]
+                                ingest_documents_db(selected_file, selected_file.name)
                                 st.success("PDF uploaded successfully!")
 
                     if "document_chunks" in st.session_state:
@@ -1231,19 +1297,16 @@ def main():
         with buttons_placeholder:
             #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
             st.button("Clear Chat", key="clear", on_click=reset_chat)
+            st.button("Clear DocumentDB", key="reset_db", on_click=st.session_state.client_db.reset_client)
 
-            relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet"]
+            relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet", "unique_id"]
             if st.session_state.doc_sources:
                 content = []
                 for document in st.session_state.doc_sources:
                     doc_dict = {
                         "page_content": document.page_content,
-                        "metadata": {}
-                    }
-                    for key in relevant_keys:
-                        value = document.metadata.get(key, 'N/A')
-                        if value != 'N/A':
-                            doc_dict["metadata"][key] = value
+                        "metadata": {key: document.metadata.get(key, 'N/A') for key in relevant_keys}
+                        }
                     content.append(doc_dict)
                 
                 customstoggle(
@@ -1264,7 +1327,7 @@ def main():
         #st.write(st.session_state.br18_appendix_child_vectorstore)
         #st.write(st.session_state.usc_vectorstore)
         #st.write(st.session_state.agent)
-        st.write(st.session_state.result)
+        #st.write(st.session_state.result)
 
 
 if __name__== '__main__':
