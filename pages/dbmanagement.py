@@ -108,7 +108,7 @@ def main():
                 filtered_ids = [doc_id for doc_id in ids if doc_id.startswith(parent_doc)]
                 #st.write(filtered_ids)
 
-                if st.button(f"Delete the entire {parent_doc}"):
+                if st.button(f"Delete Document {parent_doc}"):
                     st.session_state['delete'] = True
 
                 if st.session_state.get('delete', False):
