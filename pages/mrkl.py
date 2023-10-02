@@ -1297,7 +1297,6 @@ def main():
         with buttons_placeholder:
             #st.button("Regenerate Response", key="regenerate", on_click=st.session_state.agent.regenerate_response)
             st.button("Clear Chat", key="clear", on_click=reset_chat)
-            st.button("Clear DocumentDB", key="reset_db", on_click=st.session_state.client_db.reset_client)
 
             relevant_keys = ["Header ", "Header 3", "Header 4", "page_number", "source", "file_name", "title", "author", "snippet", "unique_id"]
             if st.session_state.doc_sources:
