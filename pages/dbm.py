@@ -1,10 +1,11 @@
 import streamlit as st
 import chromadb
-from chromadb.config import Settings
 from collections import defaultdict
-from utility.ingestion import ingest_documents_db, DBStore
-from utility.client import ClientDB
 from dotenv import load_dotenv
+from UI.sidebar import sidebar
+import boto3
+import os
+from utility.sessionstate import Init
 
 
 # Initialize ChromaDB Client
@@ -18,23 +19,18 @@ def on_selectbox_change():
     st.session_state.show_info = True
 
 
-
 def main():
     load_dotenv()
     st.set_page_config(page_title="DB MANAGEMENT", page_icon="🗃️", layout="wide")
     st.title("Database Management 🗃️")
 
     with st.empty():
-        if 'delete' not in st.session_state:
-            st.session_state['delete'] = False
-        if 'show_info' not in st.session_state:
-            st.session_state.show_info = False
-        if 'client_db' not in st.session_state:
-            st.session_state.client_db = ClientDB(collection_name=None, load_vector_store=False)
-
-    
+        Init.initialize_session_state()
+        Init.initialize_clientdb_state()
+        
 
     existing_collections = st.session_state.client_db.get_existing_collections()
+    existing_collections = [None] + existing_collections
     if not existing_collections:  # No existing collections
         st.warning("There are no existing collections. Please create a new collection to get started.")
         new_collection_name = st.text_input("Enter the name of the new collection:")
@@ -47,52 +43,34 @@ def main():
             else:
                 st.error("Please enter a valid name for the new collection.")
     else:
-        selected_collection = st.selectbox('Select a collection:', existing_collections)
+        def on_change_selected_collection_dbm():
+            st.session_state.selected_collection_state = st.session_state.new_collection_state_dbm
+            if st.session_state.new_collection_state_dbm is not None:
+                st.session_state.reinitialize_client_db = True
+
+        # Set the default index for the selectbox
+        default_index = 0
+        if st.session_state.selected_collection_state in existing_collections:
+            default_index = existing_collections.index(st.session_state.selected_collection_state)
+
+        selected_collection = st.selectbox(
+            'Select a collection:',
+            existing_collections,
+            index=default_index,
+            key='new_collection_state_dbm',
+            on_change=on_change_selected_collection_dbm
+        )
+
+        # Debugging information (remove later)
+        #st.write(f"Selected collection from session state: {st.session_state.selected_collection_state}")
+        #st.write(f"Selected collection from selectbox: {selected_collection}")
 
         collection = None
         if selected_collection:
             collection = st.session_state.client_db.client.get_collection(selected_collection)
 
         with st.sidebar:
-            st.sidebar.title("Upload to Document Database")
-            uploaded_files = st.sidebar.file_uploader("Choose a file", accept_multiple_files=True)  # You can specify the types of files you want to accept
-            if uploaded_files:
-                file_details = {"FileName": ["All Documents"], "FileType": [], "FileSize": []}
-
-                # Populate file_details using traditional loops
-                for file in uploaded_files:
-                    file_details["FileName"].append(file.name)
-                    file_details["FileType"].append(file.type)
-                    file_details["FileSize"].append(file.size)
-
-                # Use selectbox to choose a file
-                selected_file_name = st.sidebar.selectbox('Choose a file:', file_details["FileName"], on_change=on_selectbox_change)
-
-                # Get the index of the file selected
-                if selected_file_name != "All Documents":
-                    file_index = file_details["FileName"].index(selected_file_name) - 1
-                    st.sidebar.write("You selected:")
-                    st.sidebar.write("FileName : ", file_details["FileName"][file_index + 1])
-                    st.sidebar.write("FileType : ", file_details["FileType"][file_index])
-                    st.sidebar.write("FileSize : ", file_details["FileSize"][file_index])
-                else:
-                    st.sidebar.write("You selected all uploaded documents.")
-
-                # Add a note to remind the user to press the "Process" button
-                if st.session_state.show_info:
-                    st.sidebar.info("**Note:** Remember to press the 'Process' button for the current selection.")
-                    st.session_state.show_info = False
-
-                if st.sidebar.button("Process"):
-                    with st.spinner("Processing"):
-                        if selected_file_name == "All Documents":
-                            for file in uploaded_files:
-                                ingest_documents_db(file, file.name, selected_collection)
-                                st.success(f"{file.name} uploaded successfully!")
-                        else:
-                            selected_file = uploaded_files[file_index]
-                            ingest_documents_db(selected_file, selected_file.name, selected_collection)
-                            st.success("PDF uploaded successfully!")
+            sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection, collection, on_selectbox_change)
 
         collection_tab, settings_tab = st.tabs(["Collection", "Settings"])
 
@@ -100,7 +78,7 @@ def main():
 
             if collection:
                 document_count = collection.count()
-                st.subheader(f"There are {document_count} documents in the collection.")
+                #st.subheader(f"There are {document_count} pages in the collection.")
                 
                 if document_count > 0:
                     # Listing the first 10 documents
@@ -119,18 +97,37 @@ def main():
                     
                     # Create UI Elements to Select Parent Document
                     parent_docs_sorted = sorted(parent_docs_dict.keys())
-                    parent_doc = st.radio('Select a parent document:', parent_docs_sorted)
+                    st.subheader(f"There are {len(parent_docs_sorted)} documents in the collection.")
+                    parent_doc = st.radio('Select a document:', parent_docs_sorted)
 
                     filtered_ids = [doc_id for doc_id in ids if doc_id.startswith(parent_doc)]
                     #st.write(filtered_ids)
 
-                    if st.button(f"Delete Document {parent_doc}"):
+                    filtered_docs = [(doc_id, metadatas[ids.index(doc_id)]) for doc_id in filtered_ids]
+                
+
+                    if st.button(f"Delete '{parent_doc}'"):
                         st.session_state['delete'] = True
 
                     if st.session_state.get('delete', False):
                         st.warning(f"Are you sure you want to delete all chunks in {parent_doc}? This action cannot be undone.")
 
                         if st.button("Yes, Delete All"):
+                            s3_urls_to_delete = [metadata.get('file_url') for metadata in metadatas if metadata.get('unique_id') in filtered_ids]
+                            st.write(s3_urls_to_delete)
+        
+                            # Delete files from S3
+                            if s3_urls_to_delete:
+                                s3 = boto3.client('s3', region_name=os.getenv('AWS_DEFAULT_REGION'),
+                                                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                                                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'))
+
+                                bucket_name = os.getenv("AWS_BUCKET_NAME")
+
+                                for s3_url in s3_urls_to_delete:
+                                    s3_key = s3_url.split(f"{bucket_name}/")[1]
+                                    s3.delete_object(Bucket=bucket_name, Key=s3_key)
+
                             st.write("Deleting the following IDs: ", filtered_ids)  # Displaying IDs being deleted
                             collection.delete(ids=filtered_ids)
                             st.session_state['deleted'] = True
@@ -155,10 +152,13 @@ def main():
 
                     with col1:
                         st.subheader("Available IDs")
-                        selected_chunk_id = st.selectbox('Select a chunk:', filtered_ids)
+                        combined_ids = [f"(Page {doc_metadata['page_number']}): {doc_id}" for doc_id, doc_metadata in filtered_docs]
+                        selected_chunk_id_combined = st.selectbox('Select a chunk:', combined_ids)
+                        selected_chunk_id = selected_chunk_id_combined.split(": ", 1)[1]
+
                         with st.expander("View All IDs"):
-                            for idx, value in enumerate(filtered_ids, start=1):  # start=1 will start the index from 1 instead of 0
-                                st.write(f"ID {idx}: {value}")
+                            for combined_id in combined_ids:
+                                st.write(combined_id)
                         
                     # Find the selected document
                     idx = ids.index(selected_chunk_id)  # Find the index of selected_chunk_id in ids list
@@ -179,12 +179,28 @@ def main():
                             st.write(selected_metadata)
                         
                         
-                        if st.button(f"Delete Chunk"):
-                            if st.confirm(f"Are you sure you want to delete {selected_chunk_id}?"):
+                        if st.button(f"Delete Page"):
+                            st.session_state['delete_chunk'] = True
+
+                        if st.session_state.get('delete_chunk', False):
+                            st.warning(f"Are you sure you want to delete {selected_chunk_id}? This action cannot be undone.")
+
+                            if st.button("Yes, Delete"):
                                 collection.delete(selected_chunk_id)
-                                st.success(f"{selected_chunk_id} deleted successfully!")
+                                st.session_state['deleted_chunk'] = True
+                                
+                                # Reset 'delete_chunk' state to False
+                                st.session_state['delete_chunk'] = False
+
+                                st.experimental_rerun()
+
+                        if st.session_state.get('deleted_chunk', False):
+                            st.success(f"{selected_chunk_id} deleted successfully!")
+                            
+                            # Reset 'deleted_chunk' state
+                            st.session_state['deleted_chunk'] = False
             else:
-                st.error("Could not load the collection. Please check the collection name and try again.")
+                st.error("Please select a collection name to continue.")
 
         with settings_tab:
             st.subheader("Settings 🛠️")
@@ -260,6 +276,8 @@ def main():
                         
                         # Rerun the script to refresh the state and UI
                         st.experimental_rerun()
+
+    
 
 if __name__ == "__main__":
     main()

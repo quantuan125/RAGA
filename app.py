@@ -14,13 +14,16 @@ apply_css()
 with st.empty():
     if 'openai_key' not in st.session_state:
         st.session_state.openai_key = ""
+    if 'username' not in st.session_state:
+        st.session_state.username = None
 
 show_pages(
     [   
         Page("app.py", "About", "🏠"),
         Page("pages/configuration.py", "Configuration", "⚙️"),
-        Page("pages/mrkl.py", "Main Chat", "🦜️"),
+        Page("pages/chat.py", "Main Chat", "🦜️"),
         Page("pages/dbm.py", "Database Management", "🗃️"),
+        Page("pages/agent.py", "Agent Settings", "🤖"),
         Page("pages/br18.py", "BR18", "📚")
     ]
 )
