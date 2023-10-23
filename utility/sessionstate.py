@@ -9,6 +9,7 @@ class Init:
         default_values = {
             # Common to agent.py and chat.py
             "llm_model": "gpt-3.5-turbo",
+            "use_retriever_model": True,
             "vector_store": None,
             "br18_exp": False,
             "web_search": False,
@@ -47,6 +48,7 @@ class Init:
 
             # Specific to dbm.py
             "delete": False,
+            "show_info": False,
 
             # Specific to configuration.py
             "username": None,

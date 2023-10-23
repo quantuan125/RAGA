@@ -6,6 +6,8 @@ from UI.sidebar import sidebar
 import boto3
 import os
 from utility.sessionstate import Init
+from utility.client import ClientDB
+from agent.miracle import MRKL
 
 
 # Initialize ChromaDB Client
@@ -30,7 +32,6 @@ def main():
         
 
     existing_collections = st.session_state.client_db.get_existing_collections()
-    existing_collections = [None] + existing_collections
     if not existing_collections:  # No existing collections
         st.warning("There are no existing collections. Please create a new collection to get started.")
         new_collection_name = st.text_input("Enter the name of the new collection:")
@@ -43,10 +44,13 @@ def main():
             else:
                 st.error("Please enter a valid name for the new collection.")
     else:
+        existing_collections = [None] + existing_collections
         def on_change_selected_collection_dbm():
             st.session_state.selected_collection_state = st.session_state.new_collection_state_dbm
             if st.session_state.new_collection_state_dbm is not None:
-                st.session_state.reinitialize_client_db = True
+                st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=st.session_state.selected_collection_state)
+                st.session_state.agent = MRKL()
+
 
         # Set the default index for the selectbox
         default_index = 0
@@ -277,7 +281,7 @@ def main():
                         # Rerun the script to refresh the state and UI
                         st.experimental_rerun()
 
-    
+    #st.write(st.session_state.delete)
 
 if __name__ == "__main__":
     main()

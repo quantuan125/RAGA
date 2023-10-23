@@ -3,7 +3,7 @@ import os
 from st_pages import add_page_title
 from streamlit_extras.switch_page_button import switch_page
 from UI.css import apply_css
-from utility.authy import Login
+from utility.authy import Login, s3htpasswd
 from utility.client import ClientDB
 from utility.sessionstate import Init
 
@@ -60,40 +60,40 @@ def main():
         if 'username' in st.session_state and st.session_state.username == "admin":
         
         # Display a selection box with all usernames from the htpasswd file
-            htpasswd_path = os.path.join("user", "server.htpasswd")
-            with open(htpasswd_path, 'r') as file:
-                lines = file.readlines()
-                usernames = [line.split(":")[0] for line in lines if line.strip() and not line.startswith("admin")]
+            htpasswd_content = s3htpasswd.read_htpasswd()
+            lines = htpasswd_content.split('\n')
+            usernames = [line.split(":")[0] for line in lines if line.strip() and not line.startswith("admin")]
 
             selected_username = st.selectbox("Select an user:", usernames)
 
             with st.expander("Reset Client"):
                 if st.button(f"Reset Client for {selected_username}"):
-                    st.session_state['reset'] = "confirm_reset"
+                    st.session_state.reset_user = "confirm_reset"
                     
-                if st.session_state.get('reset', "") == "confirm_reset":
+                if st.session_state.get('reset_user', "") == "confirm_reset":
                     st.warning(f"Are you sure you want to reset the client for {selected_username}? This action cannot be undone and will delete all collections and documents for the user.")
                     
                     if st.button(f"Yes, Reset Client for {selected_username}"):
                         
-                        st.session_state.client_db.reset_client()
+                        client_db = ClientDB(username=selected_username, collection_name=None, load_vector_store=False)
+                        client_db.reset_client()
 
                         # Set the 'reset' state to "success"
-                        st.session_state['reset'] = "success"
+                        st.session_state.reset_user = "success"
                         
                         st.experimental_rerun()
 
-                if st.session_state.get('reset', "") == "success":
+                if st.session_state.get('reset_user', "") == "success":
                     st.success(f"Client for {selected_username} has been reset!")
                     # Clear the 'reset' state
-                    st.session_state['reset'] = None
+                    st.session_state.reset_user = None
                                 
 
             with st.expander(f"Delete User"):
                 if st.button(f"Delete {selected_username}"):
-                    st.session_state['delete'] = "confirm_delete"
+                    st.session_state.delete_user = "confirm_delete"
                 
-                if st.session_state.get('delete', "") == "confirm_delete":
+                if st.session_state.get('delete_user', "") == "confirm_delete":
                     st.warning(f"Are you sure you want to delete the user {selected_username}? This action cannot be undone and will remove all data associated with this user.")
                     
                     if st.button(f"Yes, Delete {selected_username}"):
@@ -101,15 +101,15 @@ def main():
                         Login.delete_user_account(selected_username)
 
                         # Set the 'delete' state to "success"
-                        st.session_state['delete'] = "success"
+                        st.session_state.delete_user = "success"
                         
                         # Rerun the script to refresh the state and UI
                         st.experimental_rerun()
 
-                    if st.session_state.get('delete', "") == "success":
+                    if st.session_state.get('delete_user', "") == "success":
                         st.success(f"User {selected_username} has been deleted!")
                         # Clear the 'delete' state
-                        st.session_state['delete'] = None
+                        st.session_state.delete_user = None
 
         else:
             st.warning("This section is restricted to the admin user only.")

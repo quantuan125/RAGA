@@ -144,6 +144,7 @@ def main():
                 # Callback to handle changes in collection selection
                 def on_change_selected_collection():
                     st.session_state.selected_collection_state = st.session_state.new_collection_state
+                    st.session_state.s3_object_url = None
                     if st.session_state.new_collection_state is not None:
                         st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=st.session_state.selected_collection_state)
                         st.session_state.agent = MRKL()
@@ -193,7 +194,7 @@ def main():
                         # Dropdown for selecting a specific document
                         selected_document = st.selectbox("Select a Document:", [None] + parent_docs_sorted)
                         st.session_state.selected_document = selected_document
-                        st.session_state.agent = MRKL() 
+                         
 
                         pdf_display = st.checkbox(
                             "Enable PDF Display",
@@ -201,8 +202,13 @@ def main():
                             key="pdf_display_key",
                             on_change=update_pdf_display
                         )
+                        
+                        if selected_document is None:
+                            st.info("No document is selected.")
+                            st.session_state.s3_object_url = None
 
-                        if selected_document:
+                        else:
+                            st.session_state.agent = MRKL()
                             document_data = collection.get(where={"file_name": {"$eq": selected_document}}, include=["documents", "metadatas"])
                             
                             #st.write(f"Debug: document_data['metadatas'] = {document_data['metadatas']}")
@@ -232,9 +238,6 @@ def main():
                                     # Display the summary
                                     st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
-                        else:
-                            st.write("No document is selected.")
-
 
 
             sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection, collection, on_selectbox_change)
@@ -249,7 +252,7 @@ def main():
 
                 # PDF Display in Column 1
                 with col1:
-                    if st.session_state.s3_object_url:  # Assuming you've set this session state variable
+                    if st.session_state.s3_object_url is not None:  # Assuming you've set this session state variable
                         s3_url = st.session_state.s3_object_url
                         display_pdfs(s3_url)
                     else:

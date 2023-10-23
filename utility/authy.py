@@ -3,24 +3,56 @@ import json
 import subprocess
 import streamlit as st
 import boto3
+import tempfile
+
+class s3htpasswd:
+    # Initialize S3 client
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+        region_name=os.getenv("AWS_DEFAULT_REGION")
+    )
+    
+    # Bucket name and object key
+    bucket_name = os.getenv("AWS_BUCKET_NAME")
+    object_key = 'server.htpasswd'
+    
+    @classmethod
+    def read_htpasswd(cls):
+        response = cls.s3.get_object(Bucket=cls.bucket_name, Key=cls.object_key)
+        htpasswd_content = response['Body'].read().decode('utf-8')
+        return htpasswd_content
+    
+    @classmethod
+    def write_htpasswd(cls, content):
+        cls.s3.put_object(Body=content, Bucket=cls.bucket_name, Key=cls.object_key)
+
+
 
 class Login:
 
-    htpasswd_path = os.path.join("user", "server.htpasswd")
+    #htpasswd_path = os.path.join("user", "server.htpasswd")
 
     @classmethod
     def create_server_htpasswd(cls, username, password):
         # Assuming you have docker available
-        command = f'docker run --rm --entrypoint htpasswd httpd:2 -Bbn {username} {password} >> {cls.htpasswd_path}'
-        subprocess.run(command, shell=True)
+        htpasswd_content = s3htpasswd.read_htpasswd()
+        command = f'docker run --rm --entrypoint htpasswd httpd:2 -Bbn {username} {password}'
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        new_entry = result.stdout.strip()
 
-        with open(cls.htpasswd_path, 'r') as file:
-            lines = file.readlines()
-        with open(cls.htpasswd_path, 'w') as file:
-            file.writelines(line for line in lines if line.strip())
+        # Only add a newline if the existing content is not empty
+        separator = "\n" if htpasswd_content else ""
+        updated_htpasswd_content = f"{htpasswd_content}{separator}{new_entry}"
+
+        s3htpasswd.write_htpasswd(updated_htpasswd_content)
 
     def start_new_server(port):
-        server_number = port - 8000 + 1
+        server_number = port - 8000  # This will start from 1 for port 8001, 2 for port 8002, and so on
+        if server_number <= 0:  # Handle the case for admin or any other special cases
+            server_number = 1  # or set it to whatever number you prefer for admin
+        
         container_name = f"server-{server_number}"
 
         # The command to run the Docker container with a specified name
@@ -49,16 +81,16 @@ class Login:
 
     @classmethod
     def verify_credentials(cls, username, password):
-        htpasswd_dir = os.path.dirname(cls.htpasswd_path)
-        #st.write(f"htpasswd_dir: {htpasswd_dir}")
-        #st.write(f"htpasswd_path: {cls.htpasswd_path}")
+        htpasswd_content = s3htpasswd.read_htpasswd()
 
         # Use the local htpasswd tool for verification
-        command = f'htpasswd -vb {cls.htpasswd_path} {username} {password}'
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp:
+            temp.write(htpasswd_content)
+            temp_path = temp.name
 
-        #st.write("Output:", result.stdout)
-        #st.write("Error:", result.stderr)
+        command = f'htpasswd -vb {temp_path} {username} {password}'
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        os.unlink(temp_path)
         
         # Check if the output contains the success message
         success_message = f"Password for user {username} correct."
@@ -111,14 +143,12 @@ class Login:
     @classmethod
     def delete_user_account(cls, username):
         
-        with open(cls.htpasswd_path, 'r') as file:
-            lines = file.readlines()
-        
-        # Remove the line with the username
-        lines = [line for line in lines if not line.startswith(username)]
-        
-        with open(cls.htpasswd_path, 'w') as file:
-            file.writelines(lines)
+        # 1. Remove the user from the htpasswd file stored in S3
+        htpasswd_content = s3htpasswd.read_htpasswd()
+        lines = htpasswd_content.split("\n")
+        updated_lines = [line for line in lines if not line.startswith(username)]
+        updated_htpasswd_content = "\n".join(updated_lines)
+        s3htpasswd.write_htpasswd(updated_htpasswd_content)
 
         # 2. Remove the user's mapping from the JSON file
         MAPPING_FILE_PATH = "./user/user_port_map.json"
@@ -148,6 +178,7 @@ class Login:
         else:
             print(f"{MAPPING_FILE_PATH} not found!")
         
+        # 4. Delete all objects from the user's folder in S3
         s3 = boto3.client('s3',
                         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
                         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
@@ -200,9 +231,12 @@ class Login:
 
     @classmethod
     def username_exists(cls, username):
-        if os.path.exists(cls.htpasswd_path):
-            with open(cls.htpasswd_path, 'r') as file:
-                lines = file.readlines()
+        try:
+            htpasswd_content = s3htpasswd.read_htpasswd()
+            if not htpasswd_content:
+                return False
+            lines = htpasswd_content.split("\n")
             existing_usernames = [line.split(":")[0] for line in lines]
             return username in existing_usernames
-        return False
+        except Exception as e:  # Replace this with the specific exception for a missing S3 object, if applicable
+            return False
