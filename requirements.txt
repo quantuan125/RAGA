@@ -24,5 +24,3 @@ selenium==4.12.0
 faiss-cpu
 chromadb
 boto3
-os
-tempfile
