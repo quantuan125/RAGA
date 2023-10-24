@@ -6,10 +6,12 @@ from UI.css import apply_css
 from utility.authy import Login, s3htpasswd
 from utility.client import ClientDB
 from utility.sessionstate import Init
+from dotenv import load_dotenv
 
 
 
 def main():
+    load_dotenv()
     st.set_page_config(page_title="CONFIGURATION", page_icon="⚙️", layout="wide")
     apply_css()
 
@@ -34,7 +36,7 @@ def main():
 
 
         if st.button("Sign In", key='signin_button'):
-            Login.sign_in_process(username, password)
+            Login.shared_sign_in_process(username, password)
 
             if st.session_state.authentication is True:
                 st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=None, load_vector_store=False)

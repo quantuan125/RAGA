@@ -4,6 +4,7 @@ from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import Chroma
 import streamlit as st
 from utility.authy import Login
+import os
 
 class ClientDB:
     def __init__(self, username, collection_name, load_vector_store=True):
@@ -18,8 +19,8 @@ class ClientDB:
 
         # Set up client with appropriate credentials and server URL
         self.client = chromadb.HttpClient(
-            host="localhost",
-            port=str(user_port),
+            host=os.getenv("CHROMA_SERVER_HOST", "default_host"),
+            port=8000,
             settings=Settings(
                 chroma_client_auth_provider="chromadb.auth.basic.BasicAuthClientProvider",
                 chroma_client_auth_credentials=auth_credentials,

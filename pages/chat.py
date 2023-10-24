@@ -173,7 +173,8 @@ def main():
                 "Enable Focused Mode",
                 value=st.session_state.get('focused_mode', False),
                 key="focused_mode_key",
-                on_change=update_focused_mode
+                on_change=update_focused_mode,
+                help="Chat with only the selected document from the collection"
             )
 
             if focused_mode:

@@ -206,6 +206,15 @@ class Login:
             st.error("Authentication failed. Please check your username and password.")
             st.session_state.authentication = False
 
+    def shared_sign_in_process(username, password):
+        if Login.verify_credentials(username, password):
+            st.session_state.username = username
+            st.success(f"Successfully signed in!")
+            st.session_state.authentication = True  # Update the session state
+        else:
+            st.error("Authentication failed. Please check your username and password.")
+            st.session_state.authentication = False
+
 
     def sign_up_process(signup_username, signup_password):
         if Login.username_exists(signup_username):
