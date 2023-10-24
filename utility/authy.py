@@ -3,9 +3,8 @@ import json
 import subprocess
 import streamlit as st
 import boto3
-import tempfile
 from passlib.apache import HtpasswdFile
-import io
+from passlib.hash import bcrypt
 
 class s3htpasswd:
     # Initialize S3 client
@@ -70,9 +69,10 @@ class Login:
     def create_server_htpasswd(cls, username, password):
         # Assuming you have docker available
         htpasswd_content = s3htpasswd.read_htpasswd()
-        command = f'docker run --rm --entrypoint htpasswd httpd:2 -Bbn {username} {password}'
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        new_entry = result.stdout.strip()
+        hashed_password = bcrypt.using(rounds=12).hash(password)
+    
+        # Format the new entry
+        new_entry = f"{username}:{hashed_password}"
 
         # Only add a newline if the existing content is not empty
         separator = "\n" if htpasswd_content else ""
