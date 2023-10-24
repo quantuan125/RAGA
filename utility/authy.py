@@ -4,6 +4,8 @@ import subprocess
 import streamlit as st
 import boto3
 import tempfile
+from passlib.apache import HtpasswdFile
+import io
 
 class s3htpasswd:
     # Initialize S3 client
@@ -104,20 +106,12 @@ class Login:
     def verify_credentials(cls, username, password):
         htpasswd_content = s3htpasswd.read_htpasswd()
 
-        # Use the local htpasswd tool for verification
-        with tempfile.NamedTemporaryFile(mode='w+', delete=False) as temp:
-            temp.write(htpasswd_content)
-            temp_path = temp.name
-
-        command = f'htpasswd -vb {temp_path} {username} {password}'
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
-        os.unlink(temp_path)
+        # Create an HtpasswdFile instance from the content
+        htpasswd_file = HtpasswdFile()
+        htpasswd_file.load_string(htpasswd_content)
         
-        # Check if the output contains the success message
-        success_message = f"Password for user {username} correct."
-        if success_message in result.stdout or success_message in result.stderr:
-            return True
-        return False
+        # Use the verify method to check the credentials
+        return htpasswd_file.verify(username, password)
 
     def save_user_port_mapping(username, port):
         user_port_map = s3userportmap.read_user_port_map()

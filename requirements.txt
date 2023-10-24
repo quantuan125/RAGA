@@ -20,5 +20,6 @@ unstructured
 google-api-python-client
 tiktoken
 selenium==4.12.0 
+passlib==1.7.4
 
 
