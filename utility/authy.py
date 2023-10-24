@@ -29,6 +29,36 @@ class s3htpasswd:
         cls.s3.put_object(Body=content, Bucket=cls.bucket_name, Key=cls.object_key)
 
 
+class s3userportmap:
+
+    # Initialize the S3 client
+    s3 = boto3.client(
+        's3',
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_DEFAULT_REGION')
+    )
+
+    BUCKET_NAME = os.getenv('AWS_BUCKET_NAME')
+    FILE_KEY = "user_port_map.json"
+
+    @classmethod
+    def read_user_port_map(cls):
+        try:
+            response = cls.s3.get_object(Bucket=cls.BUCKET_NAME, Key=cls.FILE_KEY)
+            content = response['Body'].read().decode('utf-8')
+            return json.loads(content)
+        except Exception as e:
+            print(f"Error reading {cls.FILE_KEY} from S3: {e}")
+            return {}
+
+    @classmethod
+    def write_user_port_map(cls, data):
+        try:
+            cls.s3.put_object(Body=json.dumps(data, indent=4), Bucket=cls.BUCKET_NAME, Key=cls.FILE_KEY)
+        except Exception as e:
+            print(f"Error writing {cls.FILE_KEY} to S3: {e}")
+
 
 class Login:
 
@@ -61,23 +91,14 @@ class Login:
 
 
     def get_next_server_port():
-        MAPPING_FILE_PATH = "./user/user_port_map.json"
         highest_port = 8000  # start with a default port
 
-        # If the mapping file exists, find the highest port in it
-        if os.path.exists(MAPPING_FILE_PATH):
-            with open(MAPPING_FILE_PATH, "r") as file:
-                content = file.read()
-                if content:
-                    try:
-                        user_port_map = json.loads(content)
-                        if user_port_map:
-                            highest_port = max(user_port_map.values())
-                    except json.JSONDecodeError:
-                        # Handle an empty or malformed JSON file
-                        pass
+    # Fetch the user-port map from S3
+        user_port_map = s3userportmap.read_user_port_map()
+        if user_port_map:
+            highest_port = max(user_port_map.values())
 
-        return highest_port + 1
+            return highest_port + 1
 
     @classmethod
     def verify_credentials(cls, username, password):
@@ -99,30 +120,16 @@ class Login:
         return False
 
     def save_user_port_mapping(username, port):
-        MAPPING_FILE_PATH = "./user/user_port_map.json"
-        
-        # Load existing mappings
-        user_port_map = {}
-        if os.path.exists(MAPPING_FILE_PATH):
-            with open(MAPPING_FILE_PATH, "r") as file:
-                content = file.read()
-                if content:
-                    try:
-                        user_port_map = json.loads(content)
-                    except json.JSONDecodeError:
-                        # Handle an empty or malformed JSON file
-                        pass
+        user_port_map = s3userportmap.read_user_port_map()
 
         # Update with the new user-port mapping
         user_port_map[username] = port
 
-        # Save updated mappings
-        with open(MAPPING_FILE_PATH, "w") as file:
-            json.dump(user_port_map, file)
+        # Save updated mappings to S3
+        s3userportmap.write_user_port_map(user_port_map)
 
 
     def get_port_for_user(username):
-        MAPPING_FILE_PATH = "./user/user_port_map.json"
         DEFAULT_ADMIN_PORT = 8000
         # Load existing mappings
 
@@ -130,15 +137,13 @@ class Login:
             return DEFAULT_ADMIN_PORT
         
 
-        if os.path.exists(MAPPING_FILE_PATH):
-            with open(MAPPING_FILE_PATH, "r") as file:
-                try:
-                    user_port_map = json.load(file)
-                except json.JSONDecodeError:
-                    # Handle an empty or malformed JSON file
-                    user_port_map = {}
-                return user_port_map.get(username, None)
-        return None
+        user_port_map = s3userportmap.read_user_port_map()
+    
+        # Check if the mapping is a valid dictionary
+        if not isinstance(user_port_map, dict):
+            user_port_map = {}
+        
+        return user_port_map.get(username, None)
 
     @classmethod
     def delete_user_account(cls, username):
@@ -151,32 +156,22 @@ class Login:
         s3htpasswd.write_htpasswd(updated_htpasswd_content)
 
         # 2. Remove the user's mapping from the JSON file
-        MAPPING_FILE_PATH = "./user/user_port_map.json"
-        user_port_map = {}
-        if os.path.exists(MAPPING_FILE_PATH):
-            with open(MAPPING_FILE_PATH, "r") as file:
-                try:
-                    user_port_map = json.load(file)
-                except json.JSONDecodeError:
-                    pass
+        user_port_map = s3userportmap.read_user_port_map()
 
-            if username in user_port_map:
-                port = user_port_map[username]
-                del user_port_map[username]
+        if username in user_port_map:
+            port = user_port_map[username]
+            del user_port_map[username]
 
-                with open(MAPPING_FILE_PATH, "w") as file:
-                    json.dump(user_port_map, file)
+            # Update the mapping in S3
+            s3userportmap.write_user_port_map(user_port_map)
 
-                # 3. Stop and remove the Docker container associated with the user
-                server_number = port - 8000 + 1
-                container_name = f"server-{server_number}"
-                command = f'docker stop {container_name} && docker rm {container_name}'
-                subprocess.run(command, shell=True)
-
-            else:
-                print(f"No mapping found for user {username} in {MAPPING_FILE_PATH}")
+            # 3. Stop and remove the Docker container associated with the user
+            server_number = port - 8000 
+            container_name = f"server-{server_number}"
+            command = f'docker stop {container_name} && docker rm {container_name}'
+            subprocess.run(command, shell=True)
         else:
-            print(f"{MAPPING_FILE_PATH} not found!")
+            print(f"No mapping found for user {username} in the user-port mapping.")
         
         # 4. Delete all objects from the user's folder in S3
         s3 = boto3.client('s3',
