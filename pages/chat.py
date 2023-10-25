@@ -12,10 +12,12 @@ from streamlit_extras.colored_header import colored_header
 from utility.client import ClientDB
 from agent.miracle import MRKL
 from agent.tools import SummarizationTool
-from UI.sidebar import sidebar
+from UI.sidebar import Sidebar
+from UI.main import Main
 from collections import defaultdict
 from langchain.schema import Document
 from utility.sessionstate import Init
+
 langchain.debug = True
 langchain.verbose = True
 
@@ -45,6 +47,8 @@ def update_focused_mode():
     st.session_state.focused_mode = not st.session_state.get('focused_mode', False)
     if not st.session_state.focused_mode:
         st.session_state.pdf_display = False
+        st.session_state.selected_document = None
+        st.session_state.agent = MRKL()
 
 def update_pdf_display():
     st.session_state.pdf_display = not st.session_state.get('pdf_display', False)
@@ -129,119 +133,83 @@ def main():
             """, unsafe_allow_html=True)
         
         with st.sidebar:
-
-            existing_collections = st.session_state.client_db.get_existing_collections()
-            existing_collections = [None] + existing_collections
-            #st.write(existing_collections)
+            existing_collections = st.session_state.client_db.get_user_specific_collections()
             if not existing_collections:
                 st.warning("No collections available.")
-            else:  # Check if there are any existing collections
-                # Set the default index for the selectbox
-                default_index = 0
-                if st.session_state.selected_collection_state in existing_collections:
-                    default_index = existing_collections.index(st.session_state.selected_collection_state)
-
-                # Callback to handle changes in collection selection
-                def on_change_selected_collection():
-                    st.session_state.selected_collection_state = st.session_state.new_collection_state
-                    st.session_state.s3_object_url = None
-                    if st.session_state.new_collection_state is not None:
-                        st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=st.session_state.selected_collection_state)
-                        st.session_state.agent = MRKL()
-
-                selected_collection = st.selectbox(
-                    'Select a collection:',
-                    existing_collections,
-                    index=default_index,
-                    key='new_collection_state',
-                    on_change=on_change_selected_collection
+            else:
+                actual_collection_name, collection_object = Main.handle_collection_selection(existing_collections)
+            
+                focused_mode = st.checkbox(
+                    "Enable Focused Mode",
+                    value=st.session_state.get('focused_mode', False),
+                    key="focused_mode_key",
+                    on_change=update_focused_mode,
+                    help="Chat with only the selected document from the collection"
                 )
 
-                # Update session state
-                st.session_state.selected_collection_state = selected_collection
+                if focused_mode:
+                    if collection_object:
+                        document_count = collection_object.count()
+                        if document_count == 0:
+                            st.warning("This collection has no documents.")
 
-                # Debugging information (remove later)
-                #st.write(f"Selected collection from session state: {st.session_state.selected_collection_state}")
-                #st.write(f"Selected collection from selectbox: {selected_collection}")
+                        if document_count > 0:
+                            documents = collection_object.peek(limit=document_count)
+                            parent_docs_dict = defaultdict(list)
+                            for doc_id, doc in zip(documents['ids'], documents['documents']):
+                                file_name = doc_id.rsplit('_', 1)[0]  # Split by the last underscore
+                                parent_docs_dict[file_name].append(doc)
 
-            collection = None
-            if selected_collection:
-                collection = st.session_state.client_db.client.get_collection(selected_collection)
-                #st.write(collection)
-            
-            focused_mode = st.checkbox(
-                "Enable Focused Mode",
-                value=st.session_state.get('focused_mode', False),
-                key="focused_mode_key",
-                on_change=update_focused_mode,
-                help="Chat with only the selected document from the collection"
-            )
-
-            if focused_mode:
-                if collection:
-                    document_count = collection.count()
-                    if document_count == 0:
-                        st.warning("This collection has no documents.")
-
-                    if document_count > 0:
-                        documents = collection.peek(limit=document_count)
-                        parent_docs_dict = defaultdict(list)
-                        for doc_id, doc in zip(documents['ids'], documents['documents']):
-                            file_name = doc_id.rsplit('_', 1)[0]  # Split by the last underscore
-                            parent_docs_dict[file_name].append(doc)
-
-                        parent_docs_sorted = sorted(parent_docs_dict.keys())
-                        
-                        # Dropdown for selecting a specific document
-                        selected_document = st.selectbox("Select a Document:", [None] + parent_docs_sorted)
-                        st.session_state.selected_document = selected_document
-                         
-
-                        pdf_display = st.checkbox(
-                            "Enable PDF Display",
-                            value=st.session_state.get('pdf_display', False),
-                            key="pdf_display_key",
-                            on_change=update_pdf_display
-                        )
-                        
-                        if selected_document is None:
-                            st.info("No document is selected.")
-                            st.session_state.s3_object_url = None
-
-                        else:
-                            st.session_state.agent = MRKL()
-                            document_data = collection.get(where={"file_name": {"$eq": selected_document}}, include=["documents", "metadatas"])
+                            parent_docs_sorted = sorted(parent_docs_dict.keys())
                             
-                            #st.write(f"Debug: document_data['metadatas'] = {document_data['metadatas']}")
+                            # Dropdown for selecting a specific document
+                            selected_document = st.selectbox("Select a Document:", [None] + parent_docs_sorted)
+                            st.session_state.selected_document = selected_document
+                            
 
-                            #st.write(f"Debug: document_data['documents'] = {document_data['documents']}")
+                            pdf_display = st.checkbox(
+                                "Enable PDF Display",
+                                value=st.session_state.get('pdf_display', False),
+                                key="pdf_display_key",
+                                on_change=update_pdf_display
+                            )
+                            
+                            if selected_document is None:
+                                st.info("No document is selected.")
+                                st.session_state.s3_object_url = None
 
-                            selected_document_chunks = document_data["documents"]
-                            #st.write(selected_document_chunks)
+                            else:
+                                st.session_state.agent = MRKL()
+                                document_data = collection_object.get(where={"file_name": {"$eq": selected_document}}, include=["documents", "metadatas"])
+                                
+                                #st.write(f"Debug: document_data['metadatas'] = {document_data['metadatas']}")
 
-                            # Additional metadata extraction and other operations can go here.
-                            first_document_metadata = document_data.get("metadatas", [{}])[0]
+                                #st.write(f"Debug: document_data['documents'] = {document_data['documents']}")
 
-                            # Extract the S3 file URL from the metadata
-                            file_url = first_document_metadata.get("file_url")
+                                selected_document_chunks = document_data["documents"]
+                                #st.write(selected_document_chunks)
 
-                            # Update the session state to hold the S3 file URL
-                            st.session_state.s3_object_url = file_url
+                                # Additional metadata extraction and other operations can go here.
+                                first_document_metadata = document_data.get("metadatas", [{}])[0]
 
-                            # Display a message indicating that a document has been selected
-                            st.write(f"You have selected '{selected_document}'")
+                                # Extract the S3 file URL from the metadata
+                                file_url = first_document_metadata.get("file_url")
 
-                            if st.button("Create Detailed Summary"):
-                                with st.spinner("Summarizing"):
-                                    document_objects = [Document(page_content=chunk) for chunk in selected_document_chunks]
-                                    summarization_tool = SummarizationTool(document_chunks=document_objects)
-                                    st.session_state.summary = summarization_tool.run()
-                                    # Display the summary
-                                    st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
+                                # Update the session state to hold the S3 file URL
+                                st.session_state.s3_object_url = file_url
 
+                                # Display a message indicating that a document has been selected
+                                st.write(f"You have selected '{selected_document}'")
 
+                                if st.button("Create Detailed Summary"):
+                                    with st.spinner("Summarizing"):
+                                        document_objects = [Document(page_content=chunk) for chunk in selected_document_chunks]
+                                        summarization_tool = SummarizationTool(document_chunks=document_objects)
+                                        st.session_state.summary = summarization_tool.run()
+                                        # Display the summary
+                                        st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
-            sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection, collection, on_selectbox_change)
+                Sidebar.file_upload_and_ingest(st.session_state.client_db, actual_collection_name, collection_object, on_selectbox_change)
 
 
         main_chat_tab, chat_setting_tab = st.tabs(["Main Chat", "Chat Settings"])
@@ -321,7 +289,7 @@ def main():
         #st.write(st.session_state.messages)
         #st.write(st.session_state.br18_vectorstore)
         #st.write(st.session_state.br18_appendix_child_vectorstore)
-        #st.write(st.session_state.vector_store)
+        st.write(st.session_state.vector_store)
         #st.write(st.session_state.client_db)
         #st.write(st.session_state.agent)
         #st.write(st.session_state.result)
@@ -332,8 +300,8 @@ def main():
         #st.write("Enable Websearch", st.session_state.web_search)
         #st.write("N Search Results", st.session_state.websearch_results)
         #st.write(st.session_state.llm_model)
-        #st.write(st.session_state.streaming)
-        #st.write(st.session_state.max_token_limit)
+        st.write(st.session_state.selected_document)
+    
 
 
 

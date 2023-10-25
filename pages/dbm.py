@@ -2,20 +2,18 @@ import streamlit as st
 import chromadb
 from collections import defaultdict
 from dotenv import load_dotenv
-from UI.sidebar import sidebar
+from UI.sidebar import Sidebar
 import boto3
 import os
 from utility.sessionstate import Init
 from utility.client import ClientDB
 from agent.miracle import MRKL
+from UI.main import Main
 
 
-# Initialize ChromaDB Client
-
-def get_existing_collections(client):
-    collections = client.list_collections()
-    existing_collectionss = sorted(collections, key=lambda x: x.name)
-    return existing_collectionss
+def get_user_collection_name(full_name):
+    user_collection_name = full_name.split('-', 1)[1] if '-' in full_name else full_name
+    return user_collection_name
 
 def on_selectbox_change():
     st.session_state.show_info = True
@@ -31,62 +29,35 @@ def main():
         Init.initialize_clientdb_state()
         
 
-    existing_collections = st.session_state.client_db.get_existing_collections()
+    existing_collections = st.session_state.client_db.get_user_specific_collections()
     if not existing_collections:  # No existing collections
         st.warning("There are no existing collections. Please create a new collection to get started.")
-        new_collection_name = st.text_input("Enter the name of the new collection:")
+        new_collection_name = f"{st.session_state.username}-{st.text_input('Enter the name of the new collection:')}"
         if st.button("Create New Collection"):
-            if new_collection_name:
-                # Code to create a new collection
+            if new_collection_name.split('-')[1]:
+                # Code to create a new collection_object
                 st.session_state.client_db.client.create_collection(new_collection_name)
                 st.success(f"Collection {new_collection_name} created successfully!")
                 st.experimental_rerun()  # Rerun the script to refresh the state and UI
             else:
                 st.error("Please enter a valid name for the new collection.")
     else:
-        existing_collections = [None] + existing_collections
-        def on_change_selected_collection_dbm():
-            st.session_state.selected_collection_state = st.session_state.new_collection_state_dbm
-            if st.session_state.new_collection_state_dbm is not None:
-                st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=st.session_state.selected_collection_state)
-                st.session_state.agent = MRKL()
-
-
-        # Set the default index for the selectbox
-        default_index = 0
-        if st.session_state.selected_collection_state in existing_collections:
-            default_index = existing_collections.index(st.session_state.selected_collection_state)
-
-        selected_collection = st.selectbox(
-            'Select a collection:',
-            existing_collections,
-            index=default_index,
-            key='new_collection_state_dbm',
-            on_change=on_change_selected_collection_dbm
-        )
-
-        # Debugging information (remove later)
-        #st.write(f"Selected collection from session state: {st.session_state.selected_collection_state}")
-        #st.write(f"Selected collection from selectbox: {selected_collection}")
-
-        collection = None
-        if selected_collection:
-            collection = st.session_state.client_db.client.get_collection(selected_collection)
+        actual_collection_name, collection_object = Main.handle_collection_selection(existing_collections)
 
         with st.sidebar:
-            sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection, collection, on_selectbox_change)
+            Sidebar.file_upload_and_ingest(st.session_state.client_db, actual_collection_name, collection_object, on_selectbox_change)
 
         collection_tab, settings_tab = st.tabs(["Collection", "Settings"])
 
         with collection_tab:
 
-            if collection:
-                document_count = collection.count()
-                #st.subheader(f"There are {document_count} pages in the collection.")
+            if collection_object:
+                document_count = collection_object.count()
+                #st.subheader(f"There are {document_count} pages in the collection_object.")
                 
                 if document_count > 0:
                     # Listing the first 10 documents
-                    documents = collection.peek(limit=document_count)
+                    documents = collection_object.peek(limit=document_count)
 
                     # Displaying each document chunk with actions
                     ids = documents['ids']
@@ -101,7 +72,7 @@ def main():
                     
                     # Create UI Elements to Select Parent Document
                     parent_docs_sorted = sorted(parent_docs_dict.keys())
-                    st.subheader(f"There are {len(parent_docs_sorted)} documents in the collection.")
+                    st.subheader(f"There are {len(parent_docs_sorted)} documents in the collection_object.")
                     parent_doc = st.radio('Select a document:', parent_docs_sorted)
 
                     filtered_ids = [doc_id for doc_id in ids if doc_id.startswith(parent_doc)]
@@ -133,7 +104,7 @@ def main():
                                     s3.delete_object(Bucket=bucket_name, Key=s3_key)
 
                             st.write("Deleting the following IDs: ", filtered_ids)  # Displaying IDs being deleted
-                            collection.delete(ids=filtered_ids)
+                            collection_object.delete(ids=filtered_ids)
                             st.session_state['deleted'] = True
                 
                             # Reset 'delete' state to False
@@ -190,7 +161,7 @@ def main():
                             st.warning(f"Are you sure you want to delete {selected_chunk_id}? This action cannot be undone.")
 
                             if st.button("Yes, Delete"):
-                                collection.delete(selected_chunk_id)
+                                collection_object.delete(selected_chunk_id)
                                 st.session_state['deleted_chunk'] = True
                                 
                                 # Reset 'delete_chunk' state to False
@@ -204,84 +175,27 @@ def main():
                             # Reset 'deleted_chunk' state
                             st.session_state['deleted_chunk'] = False
             else:
-                st.error("Please select a collection name to continue.")
+                st.error("Please select a collection to continue.")
 
         with settings_tab:
             st.subheader("Settings 🛠️")
 
             with st.expander("List of Collections"):
-                st.write(existing_collections)
+                display_collections = Main.get_display_collections(existing_collections)
+                st.write(display_collections)
             
             # Creating New Collection
             with st.expander("Create New Collection"):
-                new_collection_name = st.text_input("Enter new collection name:")
-                if st.button("Create Collection"):
-                    if new_collection_name:
-                        try:
-                            st.session_state.client_db.client.create_collection(new_collection_name)
-                            st.session_state.create_collection_message = f"Collection {new_collection_name} created successfully!"
-                            st.experimental_rerun()
-                        except Exception as e:
-                            st.error(f"Error creating collection: {e}")
-                
-                if 'create_collection_message' in st.session_state:
-                    st.success(st.session_state.create_collection_message)
-                    # Clear the message from the session state after displaying it
-                    del st.session_state.create_collection_message
+                Main.create_new_collection()
 
             # Deleting a Collection
             with st.expander("Delete a Collection"):
-                selected_collection_to_delete = st.selectbox('Select a collection to delete:', existing_collections)
-                if st.button("Delete Collection"):
-                    if selected_collection_to_delete:
-                        try:
-                            st.session_state.client_db.client.delete_collection(selected_collection_to_delete)
-                            st.session_state.delete_collection_message = f"Collection {selected_collection_to_delete} deleted successfully!"
-                            st.experimental_rerun()
-                        except Exception as e:
-                            st.error(f"Error deleting collection: {e}")
-        
-                if 'delete_collection_message' in st.session_state:
-                    st.success(st.session_state.delete_collection_message)
-                    # Clear the message from the session state after displaying it
-                    del st.session_state.delete_collection_message
+                Main.delete_collection(existing_collections)
 
             with st.expander("Rename a Collection"):
-                selected_collection_to_rename = st.selectbox('Select a collection to rename:', existing_collections, key='rename')
-                new_name = st.text_input("Enter new name:")
-                if st.button("Rename Collection"):
-                    if selected_collection_to_rename and new_name:
-                        try:
-                            collection = st.session_state.client_db.client.get_collection(selected_collection_to_rename)
-                            collection.modify(name=new_name)
-                            st.session_state.rename_collection_message = f"Collection {selected_collection_to_rename} renamed to {new_name} successfully!"
-                            st.experimental_rerun()
-                        except Exception as e:
-                            st.error(f"Error renaming collection: {e}")
-                
-                if 'rename_collection_message' in st.session_state:
-                    st.success(st.session_state.rename_collection_message)
-                    # Clear the message from the session state after displaying it
-                    del st.session_state.rename_collection_message
+                Main.rename_collection(existing_collections)
 
-            with st.expander("Reset Client"):
-                if st.button("Reset Client"):
-                    st.session_state['reset'] = True
-                
-                if st.session_state.get('reset', False):
-                    st.warning("Are you sure you want to reset the client? This action cannot be undone and will delete all collections and documents.")
-                    
-                    if st.button("Yes, Reset Client"):
-                        # Reset 'reset' state to False immediately after confirmation
-                        st.session_state['reset'] = False
-                        
-                        # Perform the client reset
-                        st.session_state.client_db.reset_client()
-                        
-                        # Rerun the script to refresh the state and UI
-                        st.experimental_rerun()
 
-    #st.write(st.session_state.delete)
 
 if __name__ == "__main__":
     main()

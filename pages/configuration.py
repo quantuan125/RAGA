@@ -6,6 +6,7 @@ from UI.css import apply_css
 from utility.authy import Login, s3htpasswd
 from utility.client import ClientDB
 from utility.sessionstate import Init
+from UI.main import Main
 from dotenv import load_dotenv
 
 
@@ -59,7 +60,40 @@ def main():
     with advanced_tab:
         st.subheader("Admin Functions")
 
+
         if 'username' in st.session_state and st.session_state.username == "admin":
+            sorted_collections_objects = st.session_state.client_db.get_all_sorted_collections()
+
+            with st.expander("List of Collections"):
+                st.write(sorted_collections_objects)
+        
+            with st.expander("Delete Collection"):
+                # Assume ClientDB is initialized with username 'admin'
+
+                if not sorted_collections_objects:
+                    st.warning("No collections found.")
+                else:
+                    all_collections = [col.name for col in sorted_collections_objects]
+                    delete_collection_selections = st.multiselect(
+                        'Select collections to delete:',
+                        all_collections,
+                        key='delete_all_collections'
+                    )
+
+                    if st.button(f"Delete Collection",key = "delete_collection_button"):
+                        for delete_collection_selection in delete_collection_selections:
+                            try:
+                                st.session_state.client_db.client.delete_collection(delete_collection_selection)
+                                st.session_state.delete_collection_message = f"Collection/collections deleted successfully!"
+                            except Exception as e:
+                                st.error(f"Error deleting collection: {e}")
+                        st.experimental_rerun()
+
+                    if 'delete_collection_message' in st.session_state:
+                        st.success(st.session_state.delete_collection_message)
+                        # Clear the message from the session state after displaying it
+                        del st.session_state.delete_collection_message
+
         
         # Display a selection box with all usernames from the htpasswd file
             htpasswd_content = s3htpasswd.read_htpasswd()
@@ -68,29 +102,32 @@ def main():
 
             selected_username = st.selectbox("Select an user:", usernames)
 
-            with st.expander("Reset Client"):
-                if st.button(f"Reset Client for {selected_username}"):
-                    st.session_state.reset_user = "confirm_reset"
-                    
-                if st.session_state.get('reset_user', "") == "confirm_reset":
-                    st.warning(f"Are you sure you want to reset the client for {selected_username}? This action cannot be undone and will delete all collections and documents for the user.")
-                    
-                    if st.button(f"Yes, Reset Client for {selected_username}"):
-                        
-                        client_db = ClientDB(username=selected_username, collection_name=None, load_vector_store=False)
-                        client_db.reset_client()
+            with st.expander("Delete User Collection"):
+                user_sorted_collections_objects = st.session_state.client_db.get_user_sorted_collections(selected_username)
 
-                        # Set the 'reset' state to "success"
-                        st.session_state.reset_user = "success"
-                        
-                        st.experimental_rerun()
+                if not user_sorted_collections_objects:
+                    st.warning("No collections found for selected user.")
+                else:
+                    user_collections = [col.name for col in user_sorted_collections_objects]
+                    delete_collection_selection = st.selectbox(
+                        'Select a collection to delete:',
+                        user_collections,
+                        key='delete_user_collection'
+                    )
 
-                if st.session_state.get('reset_user', "") == "success":
-                    st.success(f"Client for {selected_username} has been reset!")
-                    # Clear the 'reset' state
-                    st.session_state.reset_user = None
+                    if st.button(f"Delete Collection", key = "delete_user_collection_button"):
+                        try:
+                            st.session_state.client_db.client.delete_collection(delete_collection_selection)
+                            st.session_state.delete_collection_message = f"Collection {delete_collection_selection} deleted successfully!"
+                            st.experimental_rerun()
+                        except Exception as e:
+                            st.error(f"Error deleting collection: {e}")
+
+                    if 'delete_collection_message' in st.session_state:
+                        st.success(st.session_state.delete_collection_message)
+                        # Clear the message from the session state after displaying it
+                        del st.session_state.delete_collection_message
                                 
-
             with st.expander(f"Delete User"):
                 if st.button(f"Delete {selected_username}"):
                     st.session_state.delete_user = "confirm_delete"
@@ -112,9 +149,33 @@ def main():
                         st.success(f"User {selected_username} has been deleted!")
                         # Clear the 'delete' state
                         st.session_state.delete_user = None
+            
+            with st.expander("Reset Client"):
+                if st.button(f"Reset Client for {selected_username}"):
+                    st.session_state.reset_user = "confirm_reset"
+                    
+                if st.session_state.get('reset_user', "") == "confirm_reset":
+                    st.warning(f"Are you sure you want to reset the client for {selected_username}? This action cannot be undone and will delete all collections and documents for the user.")
+                    
+                    if st.button(f"Yes, Reset Client for {selected_username}"):
+                        
+                        client_db = ClientDB(username=selected_username, collection_name=None, load_vector_store=False)
+                        client_db.reset_client()
+
+                        # Set the 'reset' state to "success"
+                        st.session_state.reset_user = "success"
+                        
+                        st.experimental_rerun()
+
+                if st.session_state.get('reset_user', "") == "success":
+                    st.success(f"Client for {selected_username} has been reset!")
+                    # Clear the 'reset' state
+                    st.session_state.reset_user = None
 
         else:
             st.warning("This section is restricted to the admin user only.")
+
+
 
     #st.write(st.session_state.username)
     #st.write(st.session_state.authentication)
