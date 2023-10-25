@@ -14,9 +14,8 @@ from langchain.vectorstores.utils import filter_complex_metadata
 from langchain import PromptTemplate
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
-import boto3
-from botocore.exceptions import NoCredentialsError
-from dotenv import load_dotenv
+from utility.s3 import S3
+
 
 
 class DBStore:
@@ -148,23 +147,6 @@ class DBStore:
         
         return vectorstore
     
-    def upload_to_s3(self, file_obj, bucket_name, s3_file_name):
-        # Initialize boto3 client with credentials from .env file
-        s3 = boto3.client('s3', 
-                          aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-                          aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-                          region_name=os.getenv("AWS_DEFAULT_REGION"))
-        try:
-            file_obj.seek(0)
-            #st.write("File object position:", file_obj.tell())
-            s3.upload_fileobj(file_obj, bucket_name, s3_file_name, 
-                              ExtraArgs={'ContentType': 'application/pdf', 'ACL': 'public-read'})
-            print("Upload Successful")
-            return True
-        except NoCredentialsError:
-            print("Credentials not available")
-            return False
-    
     def ingest_document(self, file, actual_collection_name):
         if not actual_collection_name:
             raise ValueError("A valid collection must be selected for ingestion.")
@@ -182,9 +164,10 @@ class DBStore:
 
             username = st.session_state.username  # Assuming the username is stored in session_state
             s3_file_name = f"{username}/{actual_collection_name}/{self.file_name}"
-            bucket_name = os.getenv("AWS_BUCKET_NAME")  # Assuming you've set this env variable
-            if self.upload_to_s3(file, bucket_name, s3_file_name):
-                s3_object_url = f"https://s3.{os.getenv('AWS_DEFAULT_REGION')}.amazonaws.com/{bucket_name}/{s3_file_name}"
+            s3_instance = S3()
+
+            if s3_instance.upload_to_s3(file, s3_file_name):
+                s3_object_url = f"https://s3.{os.getenv('AWS_DEFAULT_REGION')}.amazonaws.com/{s3_instance.bucket_name}/{s3_file_name}"
                 self.s3_object_url = s3_object_url
 
             document_chunks = self.get_pdf_text()

@@ -1,14 +1,10 @@
-import os
 from dotenv import load_dotenv
 from langchain.callbacks import StreamlitCallbackHandler
 import streamlit as st
-from st_pages import add_page_title
 import langchain
 import langchain
-import pinecone
 from UI.customstoggle import customstoggle
 from UI.css import apply_css
-from utility.client import ClientDB
 from agent.miracle import MRKL
 from agent.tools import SummarizationTool
 from UI.sidebar import Sidebar

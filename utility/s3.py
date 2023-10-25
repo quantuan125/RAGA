@@ -1,7 +1,6 @@
 import boto3
 import os
 import json
-
 class s3htpasswd:
     # Initialize S3 client
     s3 = boto3.client(
@@ -65,6 +64,22 @@ class S3:
         )
         self.bucket_name = os.getenv('AWS_BUCKET_NAME')
 
+    def upload_to_s3(self, file_obj, s3_file_name):
+        try:
+            file_obj.seek(0)
+            #st.write("File object position:", file_obj.tell())
+            self.client.upload_fileobj(file_obj,  self.bucket_name, s3_file_name, 
+                              ExtraArgs={'ContentType': 'application/pdf', 'ACL': 'public-read'})
+            print("Upload Successful")
+            return True
+        except Exception as e:  
+            print(f"An error occurred: {e}")
+            return False
+
+    def delete_document_objects(self, s3_urls):
+        for s3_url in s3_urls:
+            s3_key = s3_url.split(f"{self.bucket_name}/")[1]
+            self.client.delete_object(Bucket=self.bucket_name, Key=s3_key)
 
     def delete_objects_in_collection(self, username, actual_collection_name):
         collection_prefix = f"{username}/{actual_collection_name}/"
@@ -99,4 +114,5 @@ class S3:
                 
                 # Delete the old object
                 self.client.delete_object(Bucket=self.bucket_name, Key=old_key)
+
 

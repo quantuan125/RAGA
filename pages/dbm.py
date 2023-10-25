@@ -1,13 +1,9 @@
 import streamlit as st
-import chromadb
 from collections import defaultdict
 from dotenv import load_dotenv
 from UI.sidebar import Sidebar
-import boto3
-import os
+from utility.s3 import S3
 from utility.sessionstate import Init
-from utility.client import ClientDB
-from agent.miracle import MRKL
 from UI.main import Main
 
 
@@ -93,15 +89,8 @@ def main():
         
                             # Delete files from S3
                             if s3_urls_to_delete:
-                                s3 = boto3.client('s3', region_name=os.getenv('AWS_DEFAULT_REGION'),
-                                                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                                                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'))
-
-                                bucket_name = os.getenv("AWS_BUCKET_NAME")
-
-                                for s3_url in s3_urls_to_delete:
-                                    s3_key = s3_url.split(f"{bucket_name}/")[1]
-                                    s3.delete_object(Bucket=bucket_name, Key=s3_key)
+                                s3_instance = S3()  # Create an instance of the S3 class
+                                s3_instance.delete_document_objects(s3_urls_to_delete)
 
                             st.write("Deleting the following IDs: ", filtered_ids)  # Displaying IDs being deleted
                             collection_object.delete(ids=filtered_ids)

@@ -1,14 +1,11 @@
 import streamlit as st
 import os
-from st_pages import add_page_title
 from streamlit_extras.switch_page_button import switch_page
 from UI.css import apply_css
 from utility.authy import Login
-from utility.s3 import s3htpasswd
+from utility.s3 import s3htpasswd, S3
 from utility.client import ClientDB
 from utility.sessionstate import Init
-from utility.s3 import S3
-from UI.main import Main
 from dotenv import load_dotenv
 
 
