@@ -28,11 +28,11 @@ def main():
         st.subheader("Sign In")
         username = st.text_input("Username", placeholder="Enter your username")
         password = st.text_input("Password", placeholder="Enter your password", type="password")
-        openai_api_key = st.text_input("Enter OpenAI API Key", value=initial_api_key, placeholder="Enter the OpenAI API key which begins with sk-", type="password")
+        #openai_api_key = st.text_input("Enter OpenAI API Key", value=initial_api_key, placeholder="Enter the OpenAI API key which begins with sk-", type="password")
         
-        if openai_api_key:
-            st.session_state.openai_key = openai_api_key
-            os.environ["OPENAI_API_KEY"] = openai_api_key
+        #if openai_api_key:
+            #st.session_state.openai_key = openai_api_key
+            #os.environ["OPENAI_API_KEY"] = openai_api_key
 
 
         if st.button("Sign In", key='signin_button'):

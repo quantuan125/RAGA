@@ -13,7 +13,7 @@ class ClientDB:
             #raise ValueError(f"No server port found for user {username}")
         
         if username == "admin":
-            auth_credentials = "admin:admin"
+            auth_credentials = os.getenv('ADMIN_AUTHENTICATION')
         else:
             auth_credentials = username 
 
