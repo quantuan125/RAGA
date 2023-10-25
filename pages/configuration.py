@@ -3,9 +3,11 @@ import os
 from st_pages import add_page_title
 from streamlit_extras.switch_page_button import switch_page
 from UI.css import apply_css
-from utility.authy import Login, s3htpasswd
+from utility.authy import Login
+from utility.s3 import s3htpasswd
 from utility.client import ClientDB
 from utility.sessionstate import Init
+from utility.s3 import S3
 from UI.main import Main
 from dotenv import load_dotenv
 
@@ -37,7 +39,7 @@ def main():
 
 
         if st.button("Sign In", key='signin_button'):
-            Login.shared_sign_in_process(username, password)
+            Login.sign_in_process(username, password)
 
             if st.session_state.authentication is True:
                 st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=None, load_vector_store=False)
@@ -118,8 +120,13 @@ def main():
                     if st.button(f"Delete Collection", key = "delete_user_collection_button"):
                         try:
                             st.session_state.client_db.client.delete_collection(delete_collection_selection)
+
+                            s3_instance = S3()
+                            s3_instance.delete_objects_in_collection(selected_username, delete_collection_selection)
+
                             st.session_state.delete_collection_message = f"Collection {delete_collection_selection} deleted successfully!"
                             st.experimental_rerun()
+
                         except Exception as e:
                             st.error(f"Error deleting collection: {e}")
 

@@ -8,12 +8,11 @@ import langchain
 import pinecone
 from UI.customstoggle import customstoggle
 from UI.css import apply_css
-from streamlit_extras.colored_header import colored_header
 from utility.client import ClientDB
 from agent.miracle import MRKL
 from agent.tools import SummarizationTool
 from UI.sidebar import Sidebar
-from UI.main import Main
+from UI.main import Main, MainChat
 from collections import defaultdict
 from langchain.schema import Document
 from utility.sessionstate import Init
@@ -67,70 +66,7 @@ def main():
             Init.initialize_pinecone_state()
 
         with st.expander("READ ME BEFORE USING! 📘", expanded=False):
-            st.markdown("""
-            ## 🦜️ Welcome to Miracle! 
-            Miracle is powered by **gpt-3.5-turbo**, specializing in construction, legal frameworks, and regulatory matters. 
-            
-            Below is a guide to help you navigate and understand the functionalities of this application better.
-            """)
-            
-            colored_header(label="🛠️ Functionalities", color_name="blue-70", description="")
-            
-            st.markdown("""
-            #### 1. **BR18 Feature** (Experimental)
-            - **Enable BR18**: Integrate BR18 as part of Miracle's internal knowledge. You can toggle this feature in the sidebar.
-            - **Search Types**:
-                - **Header Search**: Searches by the headers in BR18. Recommend for specific queries
-                - **Context Search**: Searches by content of paragraphs in BR18. Recommend for general queries
-
-            #### 2. **Web Search Feature** (Experimental)
-            - **Enable Web Search**: Integrate Google Search with up to 5 top results. You can adjust the number of results in the sidebar.
-
-            #### 3. **Document Database**
-            - **Upload & Process Document**: Upload PDFs as unstructured text and process them for Miracle to understand. Only one document can be processed at a time.
-            - **Create Detailed Summary**: After processing a document, you can create a detailed summary of it. This might take 1-2 minutes.
-            """)
-            
-            colored_header(label="📑 UI Interface", color_name="orange-70", description="")
-            
-            st.markdown("""
-            #### 1. **Main Chat**: 
-            - **View Source/Search Results**: Examine the results used by Miracle to produce its final answer.
-            - **Clear Chat**: Resets the chat interface but does not reset functionalities.
-                        
-            #### 2. **PDF Display**: 
-            - View your uploaded PDFs here. This tab only appears when a document is processed.
-            """)
-            
-            colored_header(label="📜 SYSTEM PROMPT", color_name="yellow-70", description="")
-            
-            st.markdown("""
-            For transparency, here is the initial prompt engineered for Miracle:
-
-            ```
-            You are Miracle, an expert in construction, legal frameworks, and regulatory matters.
-
-            You have the following tools to answer user queries, but only use them if necessary. 
-
-            Your primary objective is to provide responses that:
-            1. Offer an overview of the topic, referencing the chapter and the section if relevant.
-            2. List key points in bullet-points or numbered list format, referencing the clauses and their respective subclauses if relevant.
-            3. Always match or exceed the details of the tool's output text in your answers. 
-            4. Reflect back to the user's question and give a concise conclusion.
-            5. If the search tool is used, you must always return the list of available URLs as part of your final answer. 
-
-            Reminder: 
-            Always try all your tools to find the answer to the user query
-
-            Always self-reflect your answer based on the user's query and follows the list of response objective. 
-            ```
-            """)
-            
-            colored_header(label="🔗 Links", color_name="blue-green-70", description="")
-            
-            st.markdown("""
-            - For any further assistance or more information, please contact <a href="mailto:qung@arkitema.com">qung@arkitema.com</a>.
-            """, unsafe_allow_html=True)
+            MainChat.read_me_expander()
         
         with st.sidebar:
             existing_collections = st.session_state.client_db.get_user_specific_collections()
@@ -289,7 +225,7 @@ def main():
         #st.write(st.session_state.messages)
         #st.write(st.session_state.br18_vectorstore)
         #st.write(st.session_state.br18_appendix_child_vectorstore)
-        st.write(st.session_state.vector_store)
+        #st.write(st.session_state.vector_store)
         #st.write(st.session_state.client_db)
         #st.write(st.session_state.agent)
         #st.write(st.session_state.result)
@@ -300,7 +236,9 @@ def main():
         #st.write("Enable Websearch", st.session_state.web_search)
         #st.write("N Search Results", st.session_state.websearch_results)
         #st.write(st.session_state.llm_model)
-        st.write(st.session_state.selected_document)
+        #st.write(st.session_state.selected_document)
+        #st.write(st.session_state.memory_token_limit)
+        #st.write(st.session_state.ouput_token_limit)
     
 
 

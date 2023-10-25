@@ -5,60 +5,8 @@ import streamlit as st
 import boto3
 from passlib.apache import HtpasswdFile
 from passlib.hash import bcrypt
+from utility.s3 import s3htpasswd,s3userportmap
 
-class s3htpasswd:
-    # Initialize S3 client
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-        aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-        region_name=os.getenv("AWS_DEFAULT_REGION")
-    )
-    
-    # Bucket name and object key
-    bucket_name = os.getenv("AWS_BUCKET_NAME")
-    object_key = 'server.htpasswd'
-    
-    @classmethod
-    def read_htpasswd(cls):
-        response = cls.s3.get_object(Bucket=cls.bucket_name, Key=cls.object_key)
-        htpasswd_content = response['Body'].read().decode('utf-8')
-        return htpasswd_content
-    
-    @classmethod
-    def write_htpasswd(cls, content):
-        cls.s3.put_object(Body=content, Bucket=cls.bucket_name, Key=cls.object_key)
-
-
-class s3userportmap:
-
-    # Initialize the S3 client
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-        region_name=os.getenv('AWS_DEFAULT_REGION')
-    )
-
-    BUCKET_NAME = os.getenv('AWS_BUCKET_NAME')
-    FILE_KEY = "user_port_map.json"
-
-    @classmethod
-    def read_user_port_map(cls):
-        try:
-            response = cls.s3.get_object(Bucket=cls.BUCKET_NAME, Key=cls.FILE_KEY)
-            content = response['Body'].read().decode('utf-8')
-            return json.loads(content)
-        except Exception as e:
-            print(f"Error reading {cls.FILE_KEY} from S3: {e}")
-            return {}
-
-    @classmethod
-    def write_user_port_map(cls, data):
-        try:
-            cls.s3.put_object(Body=json.dumps(data, indent=4), Bucket=cls.BUCKET_NAME, Key=cls.FILE_KEY)
-        except Exception as e:
-            print(f"Error writing {cls.FILE_KEY} to S3: {e}")
 
 
 class Login:
@@ -148,26 +96,8 @@ class Login:
         updated_lines = [line for line in lines if not line.startswith(username)]
         updated_htpasswd_content = "\n".join(updated_lines)
         s3htpasswd.write_htpasswd(updated_htpasswd_content)
-
-        # 2. Remove the user's mapping from the JSON file
-        user_port_map = s3userportmap.read_user_port_map()
-
-        if username in user_port_map:
-            port = user_port_map[username]
-            del user_port_map[username]
-
-            # Update the mapping in S3
-            s3userportmap.write_user_port_map(user_port_map)
-
-            # 3. Stop and remove the Docker container associated with the user
-            server_number = port - 8000 
-            container_name = f"server-{server_number}"
-            command = f'docker stop {container_name} && docker rm {container_name}'
-            subprocess.run(command, shell=True)
-        else:
-            print(f"No mapping found for user {username} in the user-port mapping.")
         
-        # 4. Delete all objects from the user's folder in S3
+        # 2. Delete all objects from the user's folder in S3
         s3 = boto3.client('s3',
                         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
                         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
@@ -191,41 +121,23 @@ class Login:
         else:
             print(f"Folder {folder_path} does not exist in S3. Nothing to delete.")
 
-
     def sign_in_process(username, password):
         if Login.verify_credentials(username, password):
             st.session_state.username = username
-            user_port = Login.get_port_for_user(username)
-            if user_port:
-                st.success(f"Successfully signed in on localhost:{user_port}!")
-                st.session_state.authentication = True  # Update the session state
-            else:
-                st.error("Username not found!")
-                st.session_state.authentication = False
-        else:
-            st.error("Authentication failed. Please check your username and password.")
-            st.session_state.authentication = False
-
-    def shared_sign_in_process(username, password):
-        if Login.verify_credentials(username, password):
-            st.session_state.username = username
-            st.success(f"Successfully signed in!")
+            st.success(f"Successfully signed in as {username}!")
             st.session_state.authentication = True  # Update the session state
         else:
             st.error("Authentication failed. Please check your username and password.")
             st.session_state.authentication = False
 
-
+    @staticmethod
     def sign_up_process(signup_username, signup_password):
         if Login.username_exists(signup_username):
             st.error("This username already exists. Please choose a different username.")
             return
-        
+
         Login.create_server_htpasswd(signup_username, signup_password)
-        assigned_port = Login.get_next_server_port()
-        Login.start_new_server(assigned_port)
-        Login.save_user_port_mapping(signup_username, assigned_port)
-        st.success(f"Successfully signed up as {signup_username}! Your server URL is localhost:{assigned_port}.")
+        st.success(f"Successfully signed up as {signup_username}!")
 
     @classmethod
     def username_exists(cls, username):

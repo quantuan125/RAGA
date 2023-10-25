@@ -165,8 +165,8 @@ class DBStore:
             print("Credentials not available")
             return False
     
-    def ingest_document(self, file, selected_collection):
-        if not selected_collection:
+    def ingest_document(self, file, actual_collection_name):
+        if not actual_collection_name:
             raise ValueError("A valid collection must be selected for ingestion.")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
@@ -181,7 +181,7 @@ class DBStore:
             st.session_state.pdf_file_path = self.file_path
 
             username = st.session_state.username  # Assuming the username is stored in session_state
-            s3_file_name = f"{username}/{selected_collection}/{self.file_name}.pdf"
+            s3_file_name = f"{username}/{actual_collection_name}/{self.file_name}"
             bucket_name = os.getenv("AWS_BUCKET_NAME")  # Assuming you've set this env variable
             if self.upload_to_s3(file, bucket_name, s3_file_name):
                 s3_object_url = f"https://s3.{os.getenv('AWS_DEFAULT_REGION')}.amazonaws.com/{bucket_name}/{s3_file_name}"
@@ -193,7 +193,7 @@ class DBStore:
             vector_store = self.get_vectorstore()
             st.session_state.vector_store = vector_store
 
-            self.collection_name = selected_collection
+            self.collection_name = actual_collection_name
 
 
 

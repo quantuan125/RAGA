@@ -8,9 +8,9 @@ import os
 
 class ClientDB:
     def __init__(self, username, collection_name, load_vector_store=True):
-        user_port = Login.get_port_for_user(username)
-        if not user_port:
-            raise ValueError(f"No server port found for user {username}")
+        #user_port = Login.get_port_for_user(username)
+        #if not user_port:
+            #raise ValueError(f"No server port found for user {username}")
         
         if username == "admin":
             auth_credentials = "admin:admin"
