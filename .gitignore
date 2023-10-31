@@ -178,3 +178,6 @@ pyrightconfig.json
 secrets.toml
 
 storage/
+chroma/
+evaluation/
+user/
