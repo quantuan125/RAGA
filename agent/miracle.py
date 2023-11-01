@@ -17,7 +17,7 @@ class MRKL:
             temperature=0, 
             streaming=st.session_state.get('streaming', True),
             model_name=st.session_state.llm_model,
-            max_tokens=500
+            max_tokens=st.session_state.get('ouput_token_limit', 500),
             )
         self.tools = self.load_tools()
         self.agent_executor, self.memory = self.load_agent()
@@ -100,10 +100,10 @@ class MRKL:
     def load_agent(self):
         
         # Memory
-        max_token_limit = st.session_state.get('max_token_limit', 1300)
+        memory_token_limit = st.session_state.get('memory_token_limit', 1300)
         chat_msg = StreamlitChatMessageHistory(key="mrkl_chat_history")
         memory_key = "history"
-        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=max_token_limit, chat_memory=chat_msg)
+        memory = AgentTokenBufferMemory(memory_key=memory_key, llm=self.llm, input_key='input', output_key="output", max_token_limit=memory_token_limit, chat_memory=chat_msg)
         st.session_state.history = memory
 
         # System Message

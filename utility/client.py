@@ -5,9 +5,17 @@ from langchain.vectorstores import Chroma
 import streamlit as st
 from utility.authy import Login
 
+
 class ClientDB:
-    def __init__(self, username, collection_name, load_vector_store=True):
-        user_port = Login.get_port_for_user(username)
+    def __init__(self, username, collection_name, admin_target_username=None, load_vector_store=True):
+
+        if username == "admin" and admin_target_username:
+            user_port = Login.get_port_for_user(admin_target_username)
+            auth_credentials = admin_target_username  # Assuming each user's credentials are their username
+        else:
+            user_port = Login.get_port_for_user(username)
+            auth_credentials = username
+
         if not user_port:
             raise ValueError(f"No server port found for user {username}")
         
@@ -43,7 +51,17 @@ class ClientDB:
         sorted_collection = sorted([col.name for col in collections])
         return sorted_collection
 
+    def get_all_sorted_collections(self):
+        all_collections_objects = self.client.list_collections()
+        sorted_collections_objects = sorted(
+            all_collections_objects, 
+            key=lambda collection: collection.name.lower()
+        )
+        return sorted_collections_objects
+    
     def reset_client(self):
         self.client.reset()
+
+
 
     

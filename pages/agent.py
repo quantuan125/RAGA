@@ -8,7 +8,7 @@ def update_custom_db():
     st.session_state.custom_db = not st.session_state.get('custom_db', False)
 
 def update_use_retriever_model():
-    st.session_state.use_retriever_model = not st.session_state.get('use_retriever_model', True)
+    st.session_state.use_retriever_model = not st.session_state.get('use_retriever_model', False)
 
 def update_br18_exp():
     st.session_state.br18_exp = not st.session_state.get('br18_exp', False)
@@ -134,17 +134,30 @@ def main():
                     )
                     
                     # Slider for max_token_limit
-                    def update_max_token_limit():
-                        st.session_state.max_token_limit = st.session_state.max_token_limit_key
+                    def update_memory_token_limit():
+                        st.session_state.memory_token_limit = st.session_state.memory_token_limit_key
                     
                     st.slider(
-                        label="Max Token Limit",
+                        label="Memory Token Limit",
                         min_value=0,
                         max_value=12000,
-                        value=st.session_state.get('max_token_limit', 1300),
+                        value=st.session_state.get('memory_token_limit', 1300),
                         step=100,
-                        key="max_token_limit_key",
-                        on_change=update_max_token_limit
+                        key="memory_token_limit_key",
+                        on_change=update_memory_token_limit
+                    )
+
+                    def update_ouput_token_limit():
+                        st.session_state.ouput_token_limit = st.session_state.ouput_token_limit_key
+                    
+                    st.slider(
+                        label="Output Token Limit",
+                        min_value=100,
+                        max_value=1000,
+                        value=st.session_state.get('ouput_token_limit', 500),
+                        step=100,
+                        key="ouput_token_limit_key",
+                        on_change=update_ouput_token_limit
                     )
                     
                     st.info("Always remember to press 'Save' to activate new settings")
@@ -157,7 +170,7 @@ def main():
                 with st.expander("Document Database Tool Settings", expanded=True):
                     use_retriever_model = st.checkbox(
                         "Use Retriever Model", 
-                        value=st.session_state.get('use_retriever_model', True), 
+                        value=st.session_state.get('use_retriever_model', False), 
                         key="use_retriever_model_key", 
                         on_change=update_use_retriever_model,
                     )

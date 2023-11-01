@@ -255,15 +255,14 @@ class DatabaseTool:
         initial_retrieved = base_retriever.get_relevant_documents(query)
         st.session_state.doc_sources = initial_retrieved
 
-        context = "\n\n".join([f'"{doc.page_content}" ("File Name: {doc.metadata.get("file_name")}" - "Page Number: {doc.metadata.get("page_number")}")' for doc in compressed_docs])
+        context = "\n\n".join([f'"{doc.page_content}"' for doc in compressed_docs])
 
         if st.session_state.use_retriever_model:
             prompt_template = f"""
             You are a specialized retriever model. Given the context from the documents below, your task is to:
             1. Extract in details all relevant pieces of information that answers the query.
             2. Always prioritize numerical values, names, or specific details over vague and general content.
-            3. Always cite the source for each piece of information you provide using the format: "extracted information" (Source: "File Name", Page: "Page Number").
-            4. If there are no relevant information in the context to the query, explicitly state that. 
+            3. If there are no relevant information in the context to the query, explicitly state that. 
 
             Context:
             {context}

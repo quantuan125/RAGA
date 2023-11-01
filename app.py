@@ -24,7 +24,7 @@ show_pages(
         Page("pages/chat.py", "Main Chat", "🦜️"),
         Page("pages/dbm.py", "Database Management", "🗃️"),
         Page("pages/agent.py", "Agent Settings", "🤖"),
-        Page("pages/br18.py", "BR18", "📚")
+        Page("pages/evaluation.py", "Evaluation", "📐"),
     ]
 )
 
