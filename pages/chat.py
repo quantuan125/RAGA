@@ -65,7 +65,7 @@ def main():
             MainChat.read_me_expander()
         
         with st.sidebar:
-            existing_collections = st.session_state.client_db.get_user_specific_collections()
+            existing_collections = st.session_state.client_db.get_existing_collections()
             if not existing_collections:
                 st.warning("No collections available.")
             else:

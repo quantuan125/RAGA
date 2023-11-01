@@ -2,32 +2,25 @@ import os
 import json
 import subprocess
 import streamlit as st
-import boto3
 from passlib.apache import HtpasswdFile
 from passlib.hash import bcrypt
-from utility.s3 import s3htpasswd,s3userportmap
+
 
 
 
 class Login:
 
-    #htpasswd_path = os.path.join("user", "server.htpasswd")
+    htpasswd_path = os.path.join("user", "server.htpasswd")
+    MAPPING_FILE_PATH = "./user/user_port_map.json"
 
     @classmethod
     def create_server_htpasswd(cls, username, password):
-        # Assuming you have docker available
-        htpasswd_content = s3htpasswd.read_htpasswd()
         hashed_password = bcrypt.using(rounds=12).hash(password)
-    
-        # Format the new entry
         new_entry = f"{username}:{hashed_password}"
+        with open(cls.htpasswd_path, 'a') as file:
+            file.write(f"{new_entry}\n")
 
-        # Only add a newline if the existing content is not empty
-        separator = "\n" if htpasswd_content else ""
-        updated_htpasswd_content = f"{htpasswd_content}{separator}{new_entry}"
-
-        s3htpasswd.write_htpasswd(updated_htpasswd_content)
-
+    @staticmethod
     def start_new_server(port):
         server_number = port - 8000  # This will start from 1 for port 8001, 2 for port 8002, and so on
         if server_number <= 0:  # Handle the case for admin or any other special cases
@@ -39,93 +32,90 @@ class Login:
         command = f'docker run -d --name {container_name} -p {port}:8000 -e "ALLOW_RESET=TRUE" server:latest'
         subprocess.run(command, shell=True)
 
-
+    staticmethod
     def get_next_server_port():
         highest_port = 8000  # start with a default port
 
-    # Fetch the user-port map from S3
-        user_port_map = s3userportmap.read_user_port_map()
-        if user_port_map:
-            highest_port = max(user_port_map.values())
+        if os.path.exists(Login.MAPPING_FILE_PATH):
+                with open(Login.MAPPING_FILE_PATH, "r") as file:
+                    user_port_map = json.load(file)
+                    highest_port = max(user_port_map.values())
 
-            return highest_port + 1
+        return highest_port + 1
 
     @classmethod
-    def verify_credentials(cls, username, password):
-        htpasswd_content = s3htpasswd.read_htpasswd()
-
-        # Create an HtpasswdFile instance from the content
-        htpasswd_file = HtpasswdFile()
-        htpasswd_file.load_string(htpasswd_content)
+    def verify_credentials(cls, username, password): #DONE
+        # Load the htpasswd file content into an HtpasswdFile instance
+        htpasswd_file = HtpasswdFile(cls.htpasswd_path)
         
         # Use the verify method to check the credentials
         return htpasswd_file.verify(username, password)
-
+    
+    @staticmethod
     def save_user_port_mapping(username, port):
-        user_port_map = s3userportmap.read_user_port_map()
+        if os.path.exists(Login.MAPPING_FILE_PATH):
+            with open(Login.MAPPING_FILE_PATH, "r") as file:
+                user_port_map = json.load(file)
+        else:
+            user_port_map = {}
 
-        # Update with the new user-port mapping
         user_port_map[username] = port
+        with open(Login.MAPPING_FILE_PATH, "w") as file:
+            json.dump(user_port_map, file)
 
-        # Save updated mappings to S3
-        s3userportmap.write_user_port_map(user_port_map)
-
-
+    @staticmethod
     def get_port_for_user(username):
         DEFAULT_ADMIN_PORT = 8000
-        # Load existing mappings
 
         if username == "admin":
             return DEFAULT_ADMIN_PORT
-        
 
-        user_port_map = s3userportmap.read_user_port_map()
-    
-        # Check if the mapping is a valid dictionary
-        if not isinstance(user_port_map, dict):
-            user_port_map = {}
-        
-        return user_port_map.get(username, None)
+        if os.path.exists(Login.MAPPING_FILE_PATH):
+            with open(Login.MAPPING_FILE_PATH, "r") as file:
+                user_port_map = json.load(file)
+                return user_port_map.get(username, None)
+        return None
 
-    @classmethod
+    @classmethod #DONE
     def delete_user_account(cls, username):
-        
-        # 1. Remove the user from the htpasswd file stored in S3
-        htpasswd_content = s3htpasswd.read_htpasswd()
-        lines = htpasswd_content.split("\n")
-        updated_lines = [line for line in lines if not line.startswith(username)]
-        updated_htpasswd_content = "\n".join(updated_lines)
-        s3htpasswd.write_htpasswd(updated_htpasswd_content)
-        
-        # 2. Delete all objects from the user's folder in S3
-        s3 = boto3.client('s3',
-                        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-                        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-                        region_name=os.getenv('AWS_DEFAULT_REGION'))
+        # 1. Remove the user from the htpasswd file
+        with open(cls.htpasswd_path, 'r') as file:
+            lines = file.readlines()
+        lines = [line for line in lines if not line.startswith(username)]
+        with open(cls.htpasswd_path, 'w') as file:
+            file.writelines(lines)
 
-        bucket_name = os.getenv('AWS_BUCKET_NAME')
-        folder_path = username  # Assuming the folder name in S3 is the username
+        # 2. Remove the user's mapping from the JSON file
+        if os.path.exists(cls.MAPPING_FILE_PATH):
+            with open(cls.MAPPING_FILE_PATH, "r") as file:
+                user_port_map = json.load(file)
+            if username in user_port_map:
+                port = user_port_map[username]
+                del user_port_map[username]
+                with open(cls.MAPPING_FILE_PATH, "w") as file:
+                    json.dump(user_port_map, file)
 
-        # List all objects under the folder
-        result = s3.list_objects(Bucket=bucket_name, Prefix=folder_path)
-
-        # Check if the folder exists
-        if 'Contents' in result:
-            # Prepare the list of objects to delete
-            objects_to_delete = [{'Key': obj['Key']} for obj in result['Contents']]
-
-            # Delete the objects
-            s3.delete_objects(Bucket=bucket_name, Delete={'Objects': objects_to_delete})
-
-            print(f"Deleted folder {folder_path} and all its contents from S3.")
+                # 3. Stop and remove the Docker container associated with the user
+                server_number = port - 8000 
+                container_name = f"server-{server_number}"
+                command = f'docker stop {container_name} && docker rm {container_name}'
+                subprocess.run(command, shell=True)
+            else:
+                print(f"No mapping found for user {username} in {cls.MAPPING_FILE_PATH}")
         else:
-            print(f"Folder {folder_path} does not exist in S3. Nothing to delete.")
+            print(f"{cls.MAPPING_FILE_PATH} not found!")
 
+    @staticmethod
     def sign_in_process(username, password):
         if Login.verify_credentials(username, password):
             st.session_state.username = username
-            st.success(f"Successfully signed in as {username}!")
-            st.session_state.authentication = True  # Update the session state
+            user_port = Login.get_port_for_user(username)
+            if user_port:
+                st.success(f"Successfully signed in on localhost:{user_port}!")
+                st.session_state.authentication = True
+            else:
+                st.error("Username not found!")
+                st.session_state.authentication = False
         else:
             st.error("Authentication failed. Please check your username and password.")
             st.session_state.authentication = False
@@ -137,16 +127,16 @@ class Login:
             return
 
         Login.create_server_htpasswd(signup_username, signup_password)
-        st.success(f"Successfully signed up as {signup_username}!")
-
+        assigned_port = Login.get_next_server_port()
+        Login.start_new_server(assigned_port)
+        Login.save_user_port_mapping(signup_username, assigned_port)
+        st.success(f"Successfully signed up as {signup_username}! Your server URL is localhost:{assigned_port}.")
+        
     @classmethod
     def username_exists(cls, username):
-        try:
-            htpasswd_content = s3htpasswd.read_htpasswd()
-            if not htpasswd_content:
-                return False
-            lines = htpasswd_content.split("\n")
+        if os.path.exists(cls.htpasswd_path):
+            with open(cls.htpasswd_path, 'r') as file:
+                lines = file.readlines()
             existing_usernames = [line.split(":")[0] for line in lines]
             return username in existing_usernames
-        except Exception as e:  # Replace this with the specific exception for a missing S3 object, if applicable
-            return False
+        return False

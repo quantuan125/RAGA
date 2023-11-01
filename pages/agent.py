@@ -8,7 +8,7 @@ def update_custom_db():
     st.session_state.custom_db = not st.session_state.get('custom_db', False)
 
 def update_use_retriever_model():
-    st.session_state.use_retriever_model = not st.session_state.get('use_retriever_model', True)
+    st.session_state.use_retriever_model = not st.session_state.get('use_retriever_model', False)
 
 def update_br18_exp():
     st.session_state.br18_exp = not st.session_state.get('br18_exp', False)
@@ -170,7 +170,7 @@ def main():
                 with st.expander("Document Database Tool Settings", expanded=True):
                     use_retriever_model = st.checkbox(
                         "Use Retriever Model", 
-                        value=st.session_state.get('use_retriever_model', True), 
+                        value=st.session_state.get('use_retriever_model', False), 
                         key="use_retriever_model_key", 
                         on_change=update_use_retriever_model,
                     )

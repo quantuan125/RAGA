@@ -5,16 +5,14 @@ import tempfile
 import streamlit as st
 import pypdf
 from langchain.schema import Document
-import chromadb
-from chromadb.config import Settings
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import Chroma
 from langchain.vectorstores.utils import filter_complex_metadata
-from langchain import PromptTemplate
+from langchain.prompts import PromptTemplate
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
-from utility.s3 import S3
+import time
 
 
 
@@ -22,7 +20,6 @@ class DBStore:
     def __init__(self, client_db, file_path, file_name, collection_name=None):
         self.file_path = file_path
         self.file_name = os.path.splitext(file_name)[0] if file_name else None
-        self.s3_object_url = None
         if self.file_name:
             st.session_state.document_filename = self.file_name
 
@@ -106,7 +103,6 @@ class DBStore:
             "page_number": page_num,
             "file_name": self.file_name,
             "unique_id": doc_id,
-            "file_url": self.s3_object_url,
             **self.metadata,
             }
         
@@ -130,21 +126,25 @@ class DBStore:
         document_chunks = self.text_to_docs(cleaned_text_pdf)
         return document_chunks
 
-    def get_vectorstore(self):
+    def get_vectorstore(self, batch_size, delay):
         document_chunks = self.get_pdf_text()
 
-        ids = [doc.metadata["unique_id"] for doc in document_chunks]
+        def split_list(input_list, chunk_size):
+            for i in range(0, len(input_list), chunk_size):
+                yield input_list[i:i + chunk_size]
+    
 
-        #st.write(f"Using collection name: {self.collection_name}")
+        for chunk in split_list(document_chunks, batch_size):
+            chunk_ids = [doc.metadata["unique_id"] for doc in chunk]
+            vectorstore = Chroma.from_documents(
+                documents=chunk,
+                embedding=self.embeddings,
+                ids=chunk_ids,
+                client=self.client,
+                collection_name=self.collection_name
+            )
+            time.sleep(delay)
 
-        vectorstore = Chroma.from_documents(
-            documents=document_chunks, 
-            embedding=self.embeddings, 
-            ids=ids,
-            client=self.client, 
-            collection_name=self.collection_name
-        )
-        
         return vectorstore
     
     def ingest_document(self, file, actual_collection_name):
@@ -161,17 +161,6 @@ class DBStore:
             st.session_state.document_filename = self.file_name
                 
             st.session_state.pdf_file_path = self.file_path
-
-            username = st.session_state.username  # Assuming the username is stored in session_state
-            s3_file_name = f"{username}/{actual_collection_name}/{self.file_name}"
-            s3_instance = S3()
-
-            if s3_instance.upload_to_s3(file, s3_file_name):
-                s3_object_url = f"https://s3.{os.getenv('AWS_DEFAULT_REGION')}.amazonaws.com/{s3_instance.bucket_name}/{s3_file_name}"
-                self.s3_object_url = s3_object_url
-
-            document_chunks = self.get_pdf_text()
-            st.session_state.document_chunks = document_chunks
 
             vector_store = self.get_vectorstore()
             st.session_state.vector_store = vector_store
@@ -269,3 +258,48 @@ class DBStore:
         
         return document_ids
     
+class PDFTextExtractor:
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.reader = pypdf.PdfReader(file_path)
+
+    def extract_pages_from_pdf(self):
+        pages = []
+        for page in self.reader.pages:
+            text = page.extract_text()
+            if text.strip():  # Check if extracted text is not empty
+                pages.append(text)
+        return pages
+
+    @staticmethod
+    def merge_hyphenated_words(text):
+        return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+
+    @staticmethod
+    def fix_newlines(text):
+        return re.sub(r"(?<!\n)\n(?!\n)", " ", text)
+
+    @staticmethod
+    def remove_multiple_newlines(text):
+        return re.sub(r"\n{2,}", "\n", text)
+
+    @staticmethod
+    def remove_dots(text):
+        return re.sub(r'\.{4,}', ' ', text)
+
+    def clean_text(self, text):
+        cleaning_functions = [
+            self.merge_hyphenated_words,
+            self.fix_newlines,
+            self.remove_multiple_newlines,
+            self.remove_dots,
+        ]
+        for cleaning_function in cleaning_functions:
+            text = cleaning_function(text)
+        return text
+
+    def get_pdf_text(self):
+        pages = self.extract_pages_from_pdf()
+        cleaned_pages = [self.clean_text(page) for page in pages]
+        document_chunks = [Document(page_content=page) for page in cleaned_pages]
+        return document_chunks

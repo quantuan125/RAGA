@@ -9,7 +9,7 @@ class Init:
         default_values = {
             # Common to agent.py and chat.py
             "llm_model": "gpt-3.5-turbo",
-            "use_retriever_model": True,
+            "use_retriever_model": False,
             "vector_store": None,
             "br18_exp": False,
             "web_search": False,

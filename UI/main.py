@@ -3,6 +3,7 @@ from utility.client import ClientDB
 from utility.s3 import S3
 from agent.miracle import MRKL
 from streamlit_extras.colored_header import colored_header
+from utility.authy import Login
 
 
 
@@ -10,26 +11,22 @@ class Main:
 
     @staticmethod
     def handle_collection_selection(existing_collections):
+
         def on_change_selected_collection():
             st.session_state.selected_collection_state = st.session_state.new_collection_state
-            st.session_state.s3_object_url = None 
-            if st.session_state.new_collection_state is not None:
-                actual_collection_name = f"{st.session_state.username}-{st.session_state.new_collection_state}"
-                st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=actual_collection_name)
+
+            if st.session_state.new_collection_state and st.session_state.new_collection_state != "None":
+                st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=st.session_state.selected_collection_state)
                 st.session_state.agent = MRKL()
 
-        display_collections = [col.split('-', 1)[1] for col in existing_collections if col is not None]
-
-        # Insert a "None" option at the beginning of the display list
-        display_collections.insert(0, "None")
+        display_collections = ["None"] + existing_collections
 
         default_index = 0
-        if st.session_state.get('selected_collection_state'):
-            actual_collection_name = f"{st.session_state.username}-{st.session_state.selected_collection_state}"
-            if actual_collection_name in existing_collections:
-                default_index = existing_collections.index(actual_collection_name) + 1  # Adjusted for "None" at index 0
+        if st.session_state.get('selected_collection_state') and st.session_state.selected_collection_state in display_collections:
+            default_index = display_collections.index(st.session_state.selected_collection_state)
 
-        selected_collection = st.selectbox(
+
+        selected_collection_name = st.selectbox(
             'Select a collection:',
             display_collections,
             index=default_index,
@@ -37,32 +34,25 @@ class Main:
             on_change=on_change_selected_collection
         )
 
-        collection_object = None
-        actual_collection_name = None
-        if selected_collection and selected_collection != "None":
-            actual_collection_name = f"{st.session_state.username}-{selected_collection}"
-            collection_object = st.session_state.client_db.client.get_collection(actual_collection_name)
+        selected_collection_object = None
+        if selected_collection_name and selected_collection_name != "None":
+            selected_collection_object = st.session_state.client_db.client.get_collection(selected_collection_name)
 
-        return actual_collection_name, collection_object
+        return selected_collection_name, selected_collection_object
     
-    @staticmethod
-    def get_display_collections(existing_collections):
-        display_collections = [name.split('-', 1)[1] if '-' in name else name for name in existing_collections]
-        return display_collections
     
     @staticmethod
     def create_new_collection():
-        new_collection_name_input = st.text_input("Enter new collection name:")
+        new_collection_name = st.text_input("Enter new collection name:")
         if st.button("Create Collection"):
-            if new_collection_name_input:
-                new_collection_name = f"{st.session_state.username}-{new_collection_name_input}"  # Prefix the username
+            if new_collection_name:
                 try:
                     st.session_state.client_db.client.create_collection(new_collection_name)
-                    st.session_state.create_collection_message = f"Collection {new_collection_name_input} created successfully!"
+                    st.session_state.create_collection_message = f"Collection {new_collection_name} created successfully!"
                     st.experimental_rerun()
                 except Exception as e:
                     st.error(f"Error creating collection: {e}")
-
+        
         if 'create_collection_message' in st.session_state:
             st.success(st.session_state.create_collection_message)
             # Clear the message from the session state after displaying it
@@ -70,22 +60,14 @@ class Main:
 
     @staticmethod
     def delete_collection(existing_collections):
-        display_collections = Main.get_display_collections(existing_collections)
-        delete_collection_selection = st.selectbox('Select a collection to delete:', display_collections, key='delete_collection')
-        delete_collection = f"{st.session_state.username}-{delete_collection_selection}"
+        delete_collection_selection = st.selectbox('Select a collection to delete:', existing_collections, key='delete_collection')
 
         if st.button("Delete Collection"):
-            if delete_collection:
+            if delete_collection_selection:
                 try:
-                    st.session_state.client_db.client.delete_collection(delete_collection) 
-
-                    s3_instance = S3()
-                    s3_instance.delete_objects_in_collection(st.session_state.username, delete_collection)
-
+                    st.session_state.client_db.client.delete_collection(delete_collection_selection)
                     st.session_state.delete_collection_message = f"Collection {delete_collection_selection} deleted successfully!"
-
                     st.experimental_rerun()
-
                 except Exception as e:
                     st.error(f"Error deleting collection: {e}")
 
@@ -96,60 +78,20 @@ class Main:
 
     @staticmethod
     def rename_collection(existing_collections):   
-        display_collections = Main.get_display_collections(existing_collections)
 
-        rename_collection_selection = st.selectbox('Select a collection to rename:', display_collections, key='rename_collection')
-        rename_collection = f"{st.session_state.username}-{rename_collection_selection}"
-        #st.write(rename_collection)
+        rename_collection_selection = st.selectbox('Select a collection to rename:', existing_collections, key='rename_collection')
 
-        new_name_input = st.text_input("Enter new name:")
-        new_name = f"{st.session_state.username}-{new_name_input}"
-        #st.write(new_name)
+        new_name = st.text_input("Enter new name:")
 
         if st.button("Rename Collection"):
-            if rename_collection and new_name_input:
+            if rename_collection_selection and new_name:
                 try:
-                    collection = st.session_state.client_db.client.get_collection(rename_collection)
-
+                    collection = st.session_state.client_db.client.get_collection(rename_collection_selection)
                     collection.modify(name=new_name)
-
-                    # Updating the file_url metadata
-                    documents = collection.get()  # Get all documents in the collection
-                    print(documents)
-                    updated_metadatas = []  # List to hold updated metadata objects
-                    ids = []  # List to hold document IDs
-
-                    # Use documents['metadatas'] to access the list of metadata dictionaries
-                    for document_metadata in documents['metadatas']:
-                        old_url = document_metadata['file_url']
-
-                        print(old_url)
-                        # Split the old_url into its components
-                        url_parts = old_url.split('/')
-    
-                        # Replace the collection name in the URL
-                        url_parts[-2] = f"{st.session_state.username}-{new_name_input}"
-                        
-                        # Reassemble the URL
-                        new_url = '/'.join(url_parts)
-
-                        print(new_url)
-                        
-                        updated_metadatas.append({"file_url": new_url})
-                        ids.append(document_metadata['unique_id'])
-
-                    # Update the metadata in ChromaDB
-                    collection.update(ids=ids, metadatas=updated_metadatas)
-
-                    s3_instance = S3()  # Assuming you have a default constructor; adjust as necessary
-                    s3_instance.rename_objects_in_collection(st.session_state.username, rename_collection, new_name)
-
-                    st.session_state.rename_collection_message = f"Collection {rename_collection_selection} renamed to {new_name_input} successfully!"
+                    st.session_state.rename_collection_message = f"Collection {rename_collection_selection} renamed to {new_name} successfully!"
                     st.experimental_rerun()
-
                 except Exception as e:
                     st.error(f"Error renaming collection: {e}")
-                    print(e)
         
         if 'rename_collection_message' in st.session_state:
             st.success(st.session_state.rename_collection_message)
@@ -224,3 +166,74 @@ class MainChat:
         st.markdown("""
         - For any further assistance or more information, please contact <a href="mailto:qung@arkitema.com">qung@arkitema.com</a>.
         """, unsafe_allow_html=True)
+
+
+
+class MainConfig:
+
+    @staticmethod
+    def setup_admin_environment():
+        with open(Login.htpasswd_path, 'r') as file:
+            htpasswd_content = file.read()
+
+        lines = htpasswd_content.split('\n')
+        usernames = [line.split(":")[0] for line in lines if line.strip() and not line.startswith("admin")]
+
+        selected_username = st.selectbox("Select a user:", usernames)
+
+        client_db_for_selected_user = ClientDB(username="admin", collection_name=None, admin_target_username=selected_username)
+
+        sorted_collection_objects = client_db_for_selected_user.get_all_sorted_collections()
+        
+        return selected_username, client_db_for_selected_user, sorted_collection_objects
+
+    @staticmethod
+    def list_user_collections(sorted_collection_objects):
+        st.write(sorted_collection_objects)
+
+    @staticmethod
+    def delete_user_collection(client_db_for_selected_user, sorted_collection_objects):
+        if not sorted_collection_objects:
+            st.warning("No collections found.")
+            return
+
+        all_collections = [col.name for col in sorted_collection_objects]
+        delete_collection_selections = st.multiselect(
+            'Select collections to delete:',
+            all_collections,
+            key='delete_all_collections'
+        )
+
+        if st.button(f"Delete Collection", key="delete_collection_button"):
+            for delete_collection_selection in delete_collection_selections:
+                try:
+                    client_db_for_selected_user.client.delete_collection(delete_collection_selection)
+                    st.session_state.delete_collection_message = f"Collection/collections deleted successfully!"
+                except Exception as e:
+                    st.error(f"Error deleting collection: {e}")
+            st.experimental_rerun()
+
+        if 'delete_collection_message' in st.session_state:
+            st.success(st.session_state.delete_collection_message)
+            del st.session_state.delete_collection_message
+
+    @staticmethod
+    def reset_client_for_user(selected_username, client_db_for_selected_user):
+            if st.button(f"Reset Client for {selected_username}"):
+                st.session_state.reset_user = "confirm_reset"
+                
+            if st.session_state.get('reset_user', "") == "confirm_reset":
+                st.warning(f"Are you sure you want to reset the client for {selected_username}? This action cannot be undone and will delete all collections and documents for the user.")
+                
+                if st.button(f"Yes, Reset Client for {selected_username}"):
+                    client_db_for_selected_user.reset_client()
+
+                    # Set the 'reset' state to "success"
+                    st.session_state.reset_user = "success"
+                    
+                    st.experimental_rerun()
+
+            if st.session_state.get('reset_user', "") == "success":
+                st.success(f"Client for {selected_username} has been reset!")
+                # Clear the 'reset' state
+                st.session_state.reset_user = None
