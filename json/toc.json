@@ -1,0 +1,53 @@
+[{
+    "h1_main": "Part I Administrative provisions",
+    "h2_chapters": [
+        {
+            "h2_chapter": "Chapter 1 Administrative provisions",
+            "h3_subchapters": [
+                "Restrictions on the scope of the Building Regulations",
+                "Application for building permit",
+                "Use of a certified structural engineer in structure class 2-4",
+                "Use of a certified fire consultant in structure class 2-4",
+                "Building project process in structure class 2-4 up to 31 December 2019",
+                "Building project process in fire class 2-4 up to 31 December 2019",
+                "Transportable tents and structures",
+                "Camping, festival and sales areas",
+                "Building permit",
+                "Building process fees",
+                "Conclusion of a building process",
+                "Demolition of buildings"
+            ]
+        }
+    ]
+},
+{
+    "h1_main": "Part II Technical and building control provisions",
+    "h2_chapters": [
+        {
+            "h2_chapter": "Chapter 2 Access",
+            "h3_subchapters": [
+                "Access up to the building",
+                "Access conditions at the building",
+                "Shared access routes in the building",
+                "Stairs",
+                "Fencing",
+                "Hand rails",
+                "Information"
+            ]
+        },
+        {
+            "h2_chapter": "Chapter 3 Refuse systems",
+            "h3_subchapters": []
+        },
+        {
+            "h2_chapter": "Chapter 4 Drains",
+            "h3_subchapters": [
+                "General provisions regarding drain installations",
+                "Wastewater",
+                "Rain water",
+                "Drainage water"
+            ]
+        }
+    ]
+}
+]

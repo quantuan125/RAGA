@@ -49,6 +49,9 @@ class Init:
             # Specific to dbm.py
             "delete": False,
             "show_info": False,
+            "batch_size": 100,
+            "delay": 5,
+            "chunking_strategy": "by_title",
 
             # Specific to configuration.py
             "username": None,

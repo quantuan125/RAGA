@@ -2,7 +2,6 @@ from dotenv import load_dotenv
 from langchain.callbacks import StreamlitCallbackHandler
 import streamlit as st
 import langchain
-import langchain
 from UI.customstoggle import customstoggle
 from UI.css import apply_css
 from agent.miracle import MRKL
@@ -69,7 +68,7 @@ def main():
             if not existing_collections:
                 st.warning("No collections available.")
             else:
-                actual_collection_name, collection_object = Main.handle_collection_selection(existing_collections)
+                selected_collection_name, selected_collection_object = Main.handle_collection_selection(existing_collections)
             
                 focused_mode = st.checkbox(
                     "Enable Focused Mode",
@@ -80,13 +79,13 @@ def main():
                 )
 
                 if focused_mode:
-                    if collection_object:
-                        document_count = collection_object.count()
+                    if selected_collection_object:
+                        document_count = selected_collection_object.count()
                         if document_count == 0:
                             st.warning("This collection has no documents.")
 
                         if document_count > 0:
-                            documents = collection_object.peek(limit=document_count)
+                            documents = selected_collection_object.peek(limit=document_count)
                             parent_docs_dict = defaultdict(list)
                             for doc_id, doc in zip(documents['ids'], documents['documents']):
                                 file_name = doc_id.rsplit('_', 1)[0]  # Split by the last underscore
@@ -112,7 +111,7 @@ def main():
 
                             else:
                                 st.session_state.agent = MRKL()
-                                document_data = collection_object.get(where={"file_name": {"$eq": selected_document}}, include=["documents", "metadatas"])
+                                document_data = selected_collection_object.get(where={"file_name": {"$eq": selected_document}}, include=["documents", "metadatas"])
                                 
                                 #st.write(f"Debug: document_data['metadatas'] = {document_data['metadatas']}")
 
@@ -141,7 +140,7 @@ def main():
                                         # Display the summary
                                         st.session_state.messages.append({"roles": "assistant", "content": st.session_state.summary})
 
-                Sidebar.file_upload_and_ingest(st.session_state.client_db, actual_collection_name, collection_object, on_selectbox_change)
+                Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
 
 
         main_chat_tab, chat_setting_tab = st.tabs(["Main Chat", "Chat Settings"])

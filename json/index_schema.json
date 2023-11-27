@@ -1,0 +1,22 @@
+{
+    "text": [
+        {
+            "name": "unique_id"
+        },
+        {
+            "name": "file_name"
+        },
+        {
+            "name": "file_type"
+        },
+        {
+            "name": "h1_main"
+        },
+        {
+            "name": "h2_chapter"
+        },
+        {
+            "name": "h3_subchapter"
+        }
+    ]
+}

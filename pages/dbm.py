@@ -38,9 +38,11 @@ def main():
                 st.error("Please enter a valid name for the new collection.")
     else:
         selected_collection_name, selected_collection_object = Main.handle_collection_selection(existing_collections)
+        #st.write(selected_collection_name)
+        #st.write(selected_collection_object)
 
         with st.sidebar:
-            Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object, on_selectbox_change)
+            Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
 
         collection_tab, settings_tab = st.tabs(["Collection", "Settings"])
 
@@ -93,13 +95,6 @@ def main():
                             st.warning(f"Are you sure you want to delete all chunks in {parent_doc}? This action cannot be undone.")
 
                             if st.button("Yes, Delete All"):
-                                s3_urls_to_delete = [metadata.get('file_url') for metadata in metadatas if metadata.get('unique_id') in filtered_ids]
-                                st.write(s3_urls_to_delete)
-            
-                                # Delete files from S3
-                                if s3_urls_to_delete:
-                                    s3_instance = S3()  # Create an instance of the S3 class
-                                    s3_instance.delete_document_objects(s3_urls_to_delete)
 
                                 st.write("Deleting the following IDs: ", filtered_ids)  # Displaying IDs being deleted
                                 selected_collection_object.delete(ids=filtered_ids)
@@ -125,7 +120,7 @@ def main():
 
                         with col1:
                             st.subheader("Available IDs")
-                            combined_ids = [f"(Page {doc_metadata['page_number']}): {doc_id}" for doc_id, doc_metadata in filtered_docs]
+                            combined_ids = [f"(Page {doc_metadata.get('page_number', 'N/A')}): {doc_id}" for doc_id, doc_metadata in filtered_docs]
                             selected_chunk_id_combined = st.selectbox('Select a chunk:', combined_ids)
                             selected_chunk_id = selected_chunk_id_combined.split(": ", 1)[1]
 
@@ -192,6 +187,71 @@ def main():
             with st.expander("Rename a Collection"):
                 Main.rename_collection(existing_collections)
 
+            with st.expander("Advanced Indexing"):
+
+                st.session_state.batch_size = st.slider(
+                    "Document Batch Size", 
+                    min_value=10, 
+                    max_value=200, 
+                    value=st.session_state.get("batch_size", 100),  # default value is 100
+                    step=10, 
+                    help="Determines how many documents are processed in a batch. Adjust based on system capability."
+                )
+                st.session_state.delay = st.number_input(
+                    "Delay (seconds)", 
+                    min_value=0, 
+                    max_value=60,
+                    value=st.session_state.get("delay", 1),  # default value is 5
+                    step=1, 
+                    help="Amount of delay (in seconds) between processing batches. Useful to prevent resource exhaustion."
+                )
+
+                st.session_state.max_characters = st.number_input(
+                    'Maximum Characters per Chunk', 
+                    min_value=100, 
+                    value=st.session_state.get('max_characters', 4000),  # Using session_state with default
+                    step=100
+                )
+
+                st.session_state.new_after_n_chars = st.number_input(
+                    'Start New Chunk After N Characters', 
+                    min_value=100, 
+                    value=st.session_state.get('new_after_n_chars', 3800),  # Using session_state with default
+                    step=100
+                )
+            
+                st.session_state.combine_text_under_n_chars = st.number_input(
+                    'Combine Text Under N Characters', 
+                    min_value=100, 
+                    value=st.session_state.get('combine_text_under_n_chars', 2000),  # Using session_state with default
+                    step=100
+                )
+
+                def update_chunking_strategy():
+                    st.session_state.chunking_strategy = "by_title" if st.session_state.chunking_by_title else None
+
+                # Checkbox for chunking strategy
+                st.session_state.chunking_by_title = st.checkbox(
+                    'Chunk by Title',
+                    value=st.session_state.get('chunking_by_title', True),
+                    on_change=update_chunking_strategy  # Set the callback function for on_change
+                )
+
+                # Select box for strategy selection
+                st.session_state.strategy = st.selectbox(
+                    'Parsing Strategy', 
+                    options=["auto", "fast", "hi_res", "ocr_only"],
+                    index=st.session_state.get('strategy_index', 0)  # Using session_state with default
+                )
+
+    
+    #st.write(st.session_state.batch_size)
+    #st.write(st.session_state.delay)
+    #st.write(st.session_state.max_characters)
+    #st.write(st.session_state.new_after_n_chars)
+    #st.write(st.session_state.combine_text_under_n_chars)
+    #st.write(st.session_state.chunking_strategy)
+    #st.write(st.session_state.strategy)
 
 
 if __name__ == "__main__":

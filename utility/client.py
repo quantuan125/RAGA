@@ -1,7 +1,7 @@
 import chromadb
 from chromadb.config import Settings
 from langchain.embeddings import OpenAIEmbeddings
-from langchain.vectorstores import Chroma
+from langchain.vectorstores.chroma import Chroma
 import streamlit as st
 from utility.authy import Login
 

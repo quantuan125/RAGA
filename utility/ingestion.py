@@ -7,28 +7,28 @@ import pypdf
 from langchain.schema import Document
 from langchain.embeddings import OpenAIEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import Chroma
+from langchain.vectorstores.chroma import Chroma
 from langchain.vectorstores.utils import filter_complex_metadata
 from langchain.prompts import PromptTemplate
 from langchain.chat_models import ChatOpenAI
 from langchain.chains import LLMChain
 import time
-
+from lxml import html
+from pydantic import BaseModel
+from unstructured.partition.pdf import partition_pdf
+from typing import Any, Optional
+from unstructured.cleaners.core import clean_extra_whitespace, clean_dashes, clean_bullets, clean_trailing_punctuation, clean_ordered_bullets
+from unstructured.documents.elements import Table, Text
 
 
 class DBStore:
-    def __init__(self, client_db, file_path, file_name, collection_name=None):
-        self.file_path = file_path
+    def __init__(self, client_db, file_name, collection_name=None):
         self.file_name = os.path.splitext(file_name)[0] if file_name else None
-        if self.file_name:
-            st.session_state.document_filename = self.file_name
+        st.session_state.document_filename = self.file_name
 
-        if self.file_path:
-            self.reader = pypdf.PdfReader(file_path)
-            self.metadata = self.extract_metadata_from_pdf()
-        else:
-            self.reader = None
-            self.metadata = None
+        self.file_path = None
+        self.reader = None
+        self.metadata = None
 
         self.embeddings = OpenAIEmbeddings()
         self.client = client_db.client
@@ -126,29 +126,25 @@ class DBStore:
         document_chunks = self.text_to_docs(cleaned_text_pdf)
         return document_chunks
 
-    def get_vectorstore(self, batch_size, delay):
+    def get_vectorstore(self):
         document_chunks = self.get_pdf_text()
 
-        def split_list(input_list, chunk_size):
-            for i in range(0, len(input_list), chunk_size):
-                yield input_list[i:i + chunk_size]
-    
+        ids = [doc.metadata["unique_id"] for doc in document_chunks]
 
-        for chunk in split_list(document_chunks, batch_size):
-            chunk_ids = [doc.metadata["unique_id"] for doc in chunk]
-            vectorstore = Chroma.from_documents(
-                documents=chunk,
-                embedding=self.embeddings,
-                ids=chunk_ids,
-                client=self.client,
-                collection_name=self.collection_name
-            )
-            time.sleep(delay)
+        #st.write(f"Using collection name: {self.collection_name}")
+
+        vectorstore = Chroma.from_documents(
+            documents=document_chunks, 
+            embedding=self.embeddings, 
+            ids=ids,
+            client=self.client, 
+            collection_name=self.collection_name
+        )
 
         return vectorstore
     
-    def ingest_document(self, file, actual_collection_name):
-        if not actual_collection_name:
+    def ingest_document(self, file, selected_collection_name):
+        if not selected_collection_name or selected_collection_name == "None":
             raise ValueError("A valid collection must be selected for ingestion.")
         
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
@@ -157,16 +153,27 @@ class DBStore:
             
             self.reader = pypdf.PdfReader(self.file_path)
             self.metadata = self.extract_metadata_from_pdf()
-            self.file_name = os.path.splitext(file.name)[0]
-            st.session_state.document_filename = self.file_name
-                
-            st.session_state.pdf_file_path = self.file_path
 
             vector_store = self.get_vectorstore()
             st.session_state.vector_store = vector_store
 
-            self.collection_name = actual_collection_name
+            self.collection_name = selected_collection_name
 
+    def check_document_exists(self, collection_obj):
+        """
+        Check if a document with the same file name already exists in the Chroma database.
+        
+        Args:
+        - collection: The Chroma collection object
+        
+        Returns:
+        - bool: True if document exists, False otherwise
+        """
+        # Fetch documents from the Chroma collection with the same filename
+        matching_documents = collection_obj.get(where={"file_name": {"$eq": self.file_name}}, include=["documents"])
+        document_ids = matching_documents.get("ids", [])
+        
+        return document_ids
 
 
     def get_document_info(self):
@@ -242,6 +249,217 @@ class DBStore:
         #st.write(info_response)
         return info_response
     
+
+class DBIndexing:
+    def __init__(self, client_db, file_name, collection_name=None):
+        self.file_name = os.path.splitext(file_name)[0] if file_name else None
+        st.session_state.document_filename = self.file_name
+
+        self.file_path = None
+        self.reader = None
+        self.metadata = None
+
+        self.embeddings = OpenAIEmbeddings()
+        self.client = client_db.client
+        self.collection_name = collection_name or client_db.collection_name
+
+    def split_list(self, input_list, chunk_size):
+        for i in range(0, len(input_list), chunk_size):
+            yield input_list[i:i + chunk_size]
+
+    def partition_and_load(self, path_to_pdf):
+
+        # Partition the PDF
+        partitioned_elements = partition_pdf(
+            filename=path_to_pdf,
+            extract_images_in_pdf=True,
+            infer_table_structure=True,
+            chunking_strategy=st.session_state.get('chunking_strategy', 'by_title'),
+            strategy=st.session_state.get('strategy', 'auto'),
+            max_characters=st.session_state.get('max_characters', 4000),
+            new_after_n_chars=st.session_state.get('new_after_n_chars', 3800),
+            combine_text_under_n_chars=st.session_state.get('combine_text_under_n_chars', 2000),
+            image_output_dir_path=os.path.dirname(path_to_pdf),
+        )
+
+        # Categorize the elements by type
+        class Element(BaseModel):
+            type: str
+            text: Any
+            metadata: Optional[dict] = None
+
+        categorized_elements = []
+        for raw_element in partitioned_elements:
+        # Check if the element is a Table instance
+            if isinstance(raw_element, Table):
+                element_type = 'table'
+            elif isinstance(raw_element, Text):
+                element_type = 'text'
+            else:
+                element_type = 'unknown'  # Or handle other types as needed
+            
+            element_text = str(raw_element)
+            element_metadata = raw_element.metadata.to_dict() if raw_element.metadata else None
+            categorized_elements.append(Element(type=element_type, text=element_text, metadata=element_metadata))
+
+        # Save the tables and text elements for later processing
+        self.table_elements = [e for e in categorized_elements if e.type == "table"]
+        self.text_elements = [e for e in categorized_elements if e.type == "text"]
+
+        st.write(f"Number of table elements: {len(self.table_elements)}")
+        st.write(f"Number of text elements: {len(self.text_elements)}")
+
+        st.write(categorized_elements)
+
+    def extract_metadata_from_pdf(self):
+        """Extract metadata from the PDF file."""
+        if self.reader and self.reader.metadata:
+            metadata = self.reader.metadata
+            essential_file_metadata = {
+                "title": metadata.get("/Title", "").strip(),
+                "author": metadata.get("/Author", "").strip(),
+                "creation_date": metadata.get("/CreationDate", "").strip(),
+            }
+            st.session_state.document_metadata = essential_file_metadata
+            return essential_file_metadata
+        else:
+            return {}
+
+    def extract_metadata_from_element(self, element):
+        """Extract metadata from an unstructured element."""
+
+        essential_element_metadata = {
+            "filetype": element.metadata.get('filetype'),
+            "page_number": element.metadata.get('page_number'),
+        }
+        # Return the metadata dictionary
+        #st.write(essential_element_metadata)
+
+        return essential_element_metadata
+    
+    
+    @staticmethod
+    def merge_hyphenated_words(text):
+        return re.sub(r"(\w)-\n(\w)", r"\1\2", text)
+
+    @staticmethod
+    def remove_dots(text):
+        # Replace sequences of three or more dots with a single space.
+        return re.sub(r'\.{4,}', ' ', text)
+
+    def clean_text(self, elements):
+
+        cleaning_functions = [
+            clean_extra_whitespace,  # replaces fix_newlines and remove_multiple_newlines
+            clean_dashes,            # new addition
+            clean_bullets,           # new addition
+            clean_trailing_punctuation, 
+            clean_ordered_bullets, # new addition
+            self.remove_dots,
+        ]
+        
+        cleaned_text_elements = []
+        for element in elements:
+            if element.type == 'text':  # Only clean text elements
+                cleaned_text = element.text
+                for cleaning_function in cleaning_functions:
+                    cleaned_text = cleaning_function(cleaned_text)
+                element.text = cleaned_text  # Update the text in the element
+            # Tables are preserved as is
+            cleaned_text_elements.append(element)
+        
+        st.write(cleaned_text_elements)
+        return cleaned_text_elements
+    
+    def text_to_docs(self, cleaned_elements):
+
+        doc_chunks = []
+        for element in cleaned_elements:
+            doc_id = f"{self.file_name}_{uuid.uuid4()}"
+            
+            # Extract metadata from the unstructured element
+            element_metadata = self.extract_metadata_from_element(element)
+            file_metadata = self.metadata
+            
+            # Combine the global metadata with the element-specific metadata
+            metadata = {
+                "file_name": self.file_name,
+                "unique_id": doc_id,
+                "element_type": element.type,
+                **file_metadata,  # Incorporate global metadata from PDF
+                **element_metadata,  # Incorporate metadata from the specific element          
+            }
+            
+            # Filter out any None values
+            metadata = {k: v for k, v in metadata.items() if v is not None}
+
+            doc = Document(
+                page_content=element.text,
+                metadata=metadata
+            )
+            doc_chunks.append(doc)
+
+        doc_chunks = filter_complex_metadata(doc_chunks)
+        return doc_chunks
+    
+    def get_pdf_text(self):
+
+
+        # First, we'll use partition_and_load to split the PDF based on our strategies.
+        self.partition_and_load(self.file_path)
+        
+        # Clean the texts of the elements
+        cleaned_elements = self.clean_text(self.text_elements + self.table_elements)
+        
+        # Create document chunks
+        document_chunks = self.text_to_docs(cleaned_elements)
+        return document_chunks
+
+    def get_vectorstore(self, batch_size=None, delay=None):
+        document_chunks = self.get_pdf_text()
+        st.write(document_chunks)
+
+        if len(document_chunks) > 500 and batch_size is not None and delay is not None:
+            # Batching ingestion
+            for chunk in self.split_list(document_chunks, batch_size):
+                chunk_ids = [doc.metadata["unique_id"] for doc in chunk]
+                vectorstore = Chroma.from_documents(
+                    documents=chunk,
+                    embedding=self.embeddings,
+                    ids=chunk_ids,
+                    client=self.client,
+                    collection_name=self.collection_name
+                )
+                time.sleep(delay)
+    
+        else:
+            # All ingestion
+            ids = [doc.metadata["unique_id"] for doc in document_chunks]
+            vectorstore = Chroma.from_documents(
+                documents=document_chunks, 
+                embedding=self.embeddings, 
+                ids=ids,
+                client=self.client, 
+                collection_name=self.collection_name
+            )
+        return vectorstore
+    
+    def ingest_document(self, file, selected_collection_name, batch_size, delay):
+        st.write("Starting document ingestion...")
+        if not selected_collection_name or selected_collection_name == "None":
+            raise ValueError("A valid collection must be selected for ingestion.")
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
+            tmpfile.write(file.getvalue())
+            self.file_path = tmpfile.name
+            self.reader = pypdf.PdfReader(self.file_path)
+            self.metadata = self.extract_metadata_from_pdf()
+            
+            vector_store = self.get_vectorstore(batch_size, delay)
+            st.session_state.vector_store = vector_store
+
+            self.collection_name = selected_collection_name
+
     def check_document_exists(self, collection_obj):
         """
         Check if a document with the same file name already exists in the Chroma database.
@@ -257,7 +475,9 @@ class DBStore:
         document_ids = matching_documents.get("ids", [])
         
         return document_ids
-    
+
+
+
 class PDFTextExtractor:
     def __init__(self, file_path):
         self.file_path = file_path

@@ -1,0 +1,17 @@
+[
+    {
+        "name": "h1_main",
+        "description": "The \"h1_main\" represents the main title/header and is at the top of the hierarchy. ALWAYS filter with one or more CONTAINS comparators, and use the OR operator to check ALL other fields. If the value of this field contains a word or phrase that is very similar to a word or phrase in the query, filter for the exact string from the value rather than the query. ",
+        "type": "string"
+    },
+    {
+        "name": "h2_chapter",
+        "description": "The \"h2_chapter\" represents the main chapter title, positioned below h1_main. ALWAYS filter with one or more CONTAINS comparators, and use the OR operator to check ALL other fields. If the value of this field contains a word or phrase that is very similar to a word or phrase in the query, filter for the exact string from the value rather than the query. ",
+        "type": "string"
+    },
+    {
+        "name": "h3_subchapter",
+        "description": "The \"h3_subchapter\" represents the subchapter title, positioned below h1_main and h2_chapter. ALWAYS filter with one or more CONTAINS comparators, and use the OR operator to check ALL other fields. If the value of this field contains a word or phrase that is very similar to a word or phrase in the query, filter for the exact string from the value rather than the query. ",
+        "type": "string"
+    }
+]

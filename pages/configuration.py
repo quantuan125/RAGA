@@ -60,7 +60,6 @@ def main():
 
         if 'username' in st.session_state and st.session_state.username == "admin":
             selected_username, client_db_for_selected_user, sorted_collection_objects = MainConfig.setup_admin_environment()
-            st.write(client_db_for_selected_user)
 
             with st.expander("List of User Collections"):
                 MainConfig.list_user_collections(sorted_collection_objects)

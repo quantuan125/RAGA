@@ -17,7 +17,7 @@ from langchain.retrievers.document_compressors import DocumentCompressorPipeline
 from langchain.storage import InMemoryStore
 import lark
 import pinecone
-from langchain.vectorstores import Pinecone
+from langchain.vectorstores.pinecone import Pinecone
 import pickle
 from langchain.document_loaders import TextLoader
 from pathlib import Path
@@ -209,6 +209,28 @@ class DatabaseTool:
         #st.write(search_kwargs)
         base_retriever = self.vector_store.as_retriever(search_kwargs=search_kwargs)
         return base_retriever
+    
+    def get_base_retriever_custom(self):
+        top_k = st.session_state.get('top_k_value', 3)
+        search_type = st.session_state.get('search_type', 'similarity')
+        search_kwargs = {'k': top_k}
+
+        if search_type == 'mmr':
+            lambda_mult = st.session_state.get('lambda_mult', 0.5)
+            fetch_k = st.session_state.get('fetch_k', 20)
+            search_kwargs.update({'lambda_mult': lambda_mult, 'fetch_k': fetch_k})
+
+        if search_type == 'similarity_score_threshold':
+            score_threshold = st.session_state.get('score_threshold', 0.5)
+            search_kwargs.update({'score_threshold': score_threshold})
+
+        if self.selected_document:
+            search_kwargs['filter'] = {'file_name': {'$eq': self.selected_document}}
+
+        base_retriever = self.vector_store.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+        #st.write(search_type)
+        #st.write(search_kwargs)
+        return base_retriever
 
     def get_contextual_retriever(self):
         # Initialize embeddings (assuming embeddings is already defined elsewhere)
@@ -236,6 +258,12 @@ class DatabaseTool:
         )
         
         return contextual_retriever
+    
+    def run_baseline(self, query: str):
+        base_retriever = self.get_base_retriever()
+        retrieved_docs = base_retriever.get_relevant_documents(query)
+        st.write(retrieved_docs)
+        return retrieved_docs
 
     def run(self, query: str):
         contextual_retriever = self.get_contextual_retriever()
