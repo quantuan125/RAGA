@@ -20,6 +20,7 @@ with st.empty():
 show_pages(
     [   
         Page("app.py", "About", "🏠"),
+        Page("pages/main.py", "Main", ""),
         Page("pages/configuration.py", "Configuration", "⚙️"),
         Page("pages/dbm.py", "Database Management", "🗃️"),
         Page("pages/evaluation.py", "Evaluation", "📐"),

@@ -33,8 +33,8 @@ class QueryTransformer:
         # Generate the multiple queries from the original question
         generated_queries = mrq_chain.invoke({"question": question})
 
-        st.markdown("### Queries:")
-        st.write(generated_queries)
+        # st.markdown("### Queries:")
+        # st.write(generated_queries)
         return generated_queries
     
     def query_extractor(self, question):
@@ -67,8 +67,8 @@ class QueryTransformer:
             extracted_keywords = result[0].keywords.split(", ")
             extracted_query = ", ".join(extracted_keywords)
 
-            st.markdown("### Query Extractor:")
-            st.write(extracted_query)
+            # st.markdown("### Query Extractor:")
+            # st.write(extracted_query)
             return extracted_query
         else:
             # If no valid result is found, return the original query
@@ -94,8 +94,8 @@ class QueryTransformer:
 
         rewritten_query = rewriter.invoke({"question": question})
 
-        st.markdown("### Rewritten Query")
-        st.write(rewritten_query)
+        # st.markdown("### Rewritten Query")
+        # st.write(rewritten_query)
 
         return rewritten_query
     
@@ -132,7 +132,10 @@ class QueryTransformer:
 
         step_back_query = step_back_chain.invoke({"question": question})
 
-        st.markdown("### Step Back Query:")
-        st.write(step_back_query)
+        # st.markdown("### Step Back Query:")
+        # st.write(step_back_query)
 
-        return step_back_query
+        step_back_and_original_query = [question, step_back_query]
+        # st.write(step_back_and_original_query)
+
+        return step_back_and_original_query

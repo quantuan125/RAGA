@@ -4,6 +4,15 @@
             "name": "h1_main"
         },
         {
+            "name": "file_name"
+        },
+        {
+            "name": "file_type"
+        },
+        {
+            "name": "unique_id"
+        },
+        {
             "name": "h2_chapter"
         },
         {

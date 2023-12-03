@@ -1,0 +1,10 @@
+{
+    "query_transformation": "multi_retrieval_query",
+    "query_construction": "None",
+    "vector_search": "reranking_retriever",
+    "post_processing": [
+        "contextual_compression",
+        "filter_top_documents"
+    ],
+    "prompting": "baseline_prompt"
+}
