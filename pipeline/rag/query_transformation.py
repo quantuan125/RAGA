@@ -10,15 +10,20 @@ class QueryTransformer:
     def __init__(self):
         self.llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-1106")
 
-    def multi_retrieval_query(self, question):
-        query_count = st.session_state.get('query_count', 3)
-        mrq_prompt_template = st.session_state.get('mrq_prompt_template', 
-            """
-            You are an AI language model assistant. Your task is to generate {query_count} different versions of the given user question to retrieve relevant documents from a vector database.
-            
-            Provide these alternative questions separated by newlines.
-            Original question: {question}
-            """)
+    def multi_retrieval_query(self, question, **settings):
+        query_count = settings.get('query_count', st.session_state.get('query_count', 3))
+        mrq_prompt_template = settings.get(
+            'mrq_prompt_template',
+            st.session_state.get(
+                'mrq_prompt_template', 
+                """
+                You are an AI language model assistant. Your task is to generate {query_count} different versions of the given user question to retrieve relevant documents from a vector database.
+                
+                Provide these alternative questions separated by newlines.
+                Original question: {question}
+                """
+            )
+        )
 
         formatted_prompt = mrq_prompt_template.format(query_count=query_count, question=question)
         mrq_prompt = ChatPromptTemplate.from_template(formatted_prompt)

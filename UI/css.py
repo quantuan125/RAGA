@@ -15,7 +15,7 @@ css = '''
         width: 200px !important; # Set the width to your desired value
     }
     /* Full-width adjustments for text input and button */
-    .stTextInput, .stButton > button {
+    .stTextInput, {
         width: 100% !important;
     }
 
@@ -29,6 +29,7 @@ css = '''
         display: block;
         width: 100% !important;
     }
+    
 </style>
 '''
 

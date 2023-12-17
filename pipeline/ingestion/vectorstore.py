@@ -5,6 +5,7 @@ import uuid
 
 class VectorStore:
 
+    @staticmethod
     def build_chroma_vectorstore(document_chunks, document_embedder):
         chroma_client = st.session_state.client_db.client
         chroma_collection_name = st.session_state.collection_name
@@ -34,6 +35,7 @@ class VectorStore:
         #st.write(vectorstore)
         return vectorstore
     
+    @staticmethod
     def build_redis_vectorstore(document_chunks, document_embedder):
         redis_url = st.session_state.get('redis_url', 'redis://localhost:9000')
         redis_index_name = st.session_state.get('redis_index_name', 'user')

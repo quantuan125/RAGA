@@ -106,6 +106,7 @@ class DocumentProcessor:
 
         return documents
 
+    @staticmethod
     def clean_chunks_content(documents):
         cleaning_functions = [
             clean_extra_whitespace, 
@@ -124,16 +125,16 @@ class DocumentProcessor:
             # Update the document's page_content with the cleaned text
             document.page_content = cleaned_text
 
-        st.markdown("### Cleaned Document Chunks:")
-        st.write(documents)
+        # st.markdown("### Cleaned Document Chunks:")
+        # st.write(documents)
         return documents
 
     
     @staticmethod
     def customize_document_metadata(documents):
-        remove_metadata_keys = st.session_state.remove_metadata_keys
-        add_metadata_keys = st.session_state.add_metadata_keys
-        unique_id_type = st.session_state.selected_unique_id_type
+        remove_metadata_keys = st.session_state.get('remove_metadata_keys',[])
+        add_metadata_keys = st.session_state.get('add_metadata_keys', ['unique_id'])
+        unique_id_type = st.session_state.get('unique_id_type', 'file_name + uuid')
 
         for chunk in documents:
             # Filter out selected metadata keys
@@ -147,8 +148,8 @@ class DocumentProcessor:
                     unique_id = f"{chunk.metadata.get('file_name', 'unknown')}_{uuid.uuid4()}"
                 chunk.metadata['unique_id'] = unique_id
 
-        st.markdown("### Customized Document Metadata:")
-        st.write(documents)
+        # st.markdown("### Customized Document Metadata:")
+        # st.write(documents)
         return documents
         
     @staticmethod
@@ -164,8 +165,8 @@ class DocumentProcessor:
         """
         filtered_documents = [doc for doc in document_chunks if len(doc.page_content) > 50]
 
-        st.markdown("### Filter Short Documents:")
-        st.write(filtered_documents)
+        # st.markdown("### Filter Short Documents:")
+        # st.write(filtered_documents)
 
         return filtered_documents
     

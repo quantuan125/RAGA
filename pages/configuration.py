@@ -6,6 +6,7 @@ from utility.client import ClientDB
 from utility.sessionstate import Init
 from dotenv import load_dotenv
 from UI.main import MainConfig
+from st_keyup import st_keyup
 
 
 
@@ -25,20 +26,22 @@ def main():
         initial_api_key = st.session_state.openai_key if 'openai_key' in st.session_state else ""
 
         st.subheader("Sign In")
-        username = st.text_input("Username", placeholder="Enter your username")
-        password = st.text_input("Password", placeholder="Enter your password", type="password")
-        #openai_api_key = st.text_input("Enter OpenAI API Key", value=initial_api_key, placeholder="Enter the OpenAI API key which begins with sk-", type="password")
-        
-        #if openai_api_key:
-            #st.session_state.openai_key = openai_api_key
-            #os.environ["OPENAI_API_KEY"] = openai_api_key
+        with st.form(key='sign_in'):
+            username = st.text_input("Username", placeholder="Enter your username")
+            password = st.text_input("Password", placeholder="Enter your password", type="password")
+
+            #openai_api_key = st.text_input("Enter OpenAI API Key", value=initial_api_key, placeholder="Enter the OpenAI API key which begins with sk-", type="password")
+            
+            #if openai_api_key:
+                #st.session_state.openai_key = openai_api_key
+                #os.environ["OPENAI_API_KEY"] = openai_api_key
 
 
-        if st.button("Sign In", key='signin_button'):
-            Login.sign_in_process(username, password)
+            if st.form_submit_button("Sign In"):
+                Login.sign_in_process(username, password)
 
-            if st.session_state.authentication is True:
-                st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=None, load_vector_store=False)
+                if st.session_state.authentication is True:
+                    st.session_state.client_db = ClientDB(username=st.session_state.username, collection_name=None, load_vector_store=False)
                 
 
         if st.session_state.authentication is True:

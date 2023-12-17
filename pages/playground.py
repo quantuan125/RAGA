@@ -10,12 +10,12 @@ from pipeline.ingestion.document_processor import DocumentProcessor
 from pipeline.ingestion.document_embedder import DocumentEmbedder
 from pipeline.ingestion.vectorstore import VectorStore
 from pipeline.ingestion.document_indexer import DocumentIndexer
-from pipeline.pipeline import Pipeline
+from pipeline.pipeline import Retrieval_Pipeline
 import streamlit as st
 from dotenv import load_dotenv
 from UI.css import apply_css
 from utility.sessionstate import Init
-from UI.main import Main
+from UI.ui_main import Main
 import langchain
 from langchain.chains import HypotheticalDocumentEmbedder
 import os
@@ -288,7 +288,7 @@ def main():
             document_indexer_methods = {
                 'None': None, 
                 'Summary Indexing': DocumentIndexer.summary_indexing,
-                'Prent Document Indexing': DocumentIndexer.parent_document_indexing,
+                'Parent Document Indexing': DocumentIndexer.parent_document_indexing,
             }
 
             # Selectbox for choosing the text splitter type
@@ -350,7 +350,7 @@ def main():
 
         #INGESTION PIPELINE
         if st.button("Ingest Document"):
-            ingestion = Pipeline.run_ingestion_pipeline(
+            ingestion = Retrieval_Pipeline.run_ingestion_pipeline(
                 uploaded_file, 
                 document_loading=document_loader_methods[selected_document_loader],
                 document_splitting=document_splitting_methods[selected_document_splitter],
@@ -939,7 +939,7 @@ def main():
                 st.markdown("### Query")
                 st.write(user_question)
 
-                custom_retrieval_answer = Pipeline.run_retrieval_pipeline(
+                custom_retrieval_answer = Retrieval_Pipeline.retrieval_pipeline(
                     user_question,
                     query_transformation=query_transformation_methods[selected_query_transformation],
                     query_construction = query_constructor_methods[selected_query_constructor],

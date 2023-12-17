@@ -1,0 +1,35 @@
+{
+    "query_transformation": {
+        "function": "multi_retrieval_query",
+        "settings": {
+            "query_count": 3,
+            "mrq_prompt_template": "\n        You are an AI language model assistant. Your task is to generate {query_count} different versions of the given user question to retrieve relevant documents from a vector database.\n        \n        Provide these alternative questions separated by newlines.\n        Original question: {question}\n        "
+        }
+    },
+    "query_construction": {
+        "function": "None",
+        "settings": null
+    },
+    "vector_search": {
+        "function": "reranking_retriever",
+        "settings": null
+    },
+    "post_processing": {
+        "functions": [
+            {
+                "function": "contextual_compression",
+                "settings": {}
+            },
+            {
+                "function": "filter_top_documents",
+                "settings": {
+                    "top_filter_n": 10
+                }
+            }
+        ]
+    },
+    "prompting": {
+        "function": "baseline_prompt",
+        "settings": null
+    }
+}

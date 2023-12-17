@@ -1,0 +1,142 @@
+{
+    "query_transformation": {
+        "function": "None",
+        "settings": null
+    },
+    "query_construction": {
+        "function": "self_query_constructor",
+        "settings": {
+            "document_content_description": "Structured sections of the Danish Building Regulation 2018 document",
+            "metadata_field_info": [
+                {
+                    "name": "h1_main",
+                    "description": "The \"h1_main\" represents the main title/header and is at the top of the hierarchy. ALWAYS filter with one or more CONTAINS comparators, and use the OR operator to check ALL other fields. If the value of this field contains a word or phrase that is very similar to a word or phrase in the query, filter for the exact string from the value rather than the query. ",
+                    "type": "string"
+                },
+                {
+                    "name": "h2_chapter",
+                    "description": "The \"h2_chapter\" represents the main chapter title, positioned below h1_main. ALWAYS filter with one or more CONTAINS comparators, and use the OR operator to check ALL other fields. If the value of this field contains a word or phrase that is very similar to a word or phrase in the query, filter for the exact string from the value rather than the query. ",
+                    "type": "string"
+                },
+                {
+                    "name": "h3_subchapter",
+                    "description": "The \"h3_subchapter\" represents the subchapter title, positioned below h1_main and h2_chapter. ALWAYS filter with one or more CONTAINS comparators, and use the OR operator to check ALL other fields. If the value of this field contains a word or phrase that is very similar to a word or phrase in the query, filter for the exact string from the value rather than the query. ",
+                    "type": "string"
+                }
+            ],
+            "toc_content": [
+                {
+                    "h1_main": "Executive order on building regulations 2018 (BR18) Contents",
+                    "subsections": []
+                },
+                {
+                    "h1_main": "Part I Administrative provisions",
+                    "subsections": [
+                        {
+                            "h2_chapter": "Chapter 1 Administrative provisions",
+                            "subsections": [
+                                {
+                                    "h3_subchapter": "Restrictions on the scope of the Building Regulations",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Application for building permit",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Use of a certified structural engineer in structure class 2 ",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Use of a certified fire consultant in structure class 2 ",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Building project process in structure class 2 4 up to 31 December",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Building project process in fire class 2 4 up to 31 December",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Transportable tents and structures",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Camping, festival and sales areas",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Building permit",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Building process fees",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Conclusion of a building process",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Demolition of buildings",
+                                    "subsections": []
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "h1_main": "Part II Technical and building control provisions",
+                    "subsections": [
+                        {
+                            "h2_chapter": "Chapter 2 Access",
+                            "subsections": [
+                                {
+                                    "h3_subchapter": "Access up to the building",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Access conditions at the building",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Shared access routes in the building",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Stairs",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Fencing",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Hand rails",
+                                    "subsections": []
+                                },
+                                {
+                                    "h3_subchapter": "Information",
+                                    "subsections": []
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "vector_search": {
+        "function": "self_query_retriever",
+        "settings": null
+    },
+    "post_processing": {
+        "functions": []
+    },
+    "prompting": {
+        "function": "None",
+        "settings": null
+    }
+}

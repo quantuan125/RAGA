@@ -51,8 +51,18 @@ class Prompting:
 
         return prompt_result
     
-    def custom_prompt(self, combined_context, question):
-        custom_template = st.session_state.get('custom_prompt_template', 'Default template if not set')
+    def custom_prompt(self, combined_context, question, **settings):
+        custom_template = settings.get('custom_template', st.session_state.get('full_custom_prompt', 
+            """
+            Use the following pieces of context to answer the question at the end. 
+            If you don't know the answer, just say that you don't know, don't try to make up an answer.
+
+            Context: 
+            {context}
+            
+            Question: {question}
+            """
+        ))
 
         prompt_custom = ChatPromptTemplate.from_template(custom_template)
 
@@ -61,12 +71,18 @@ class Prompting:
             "question": question
         }
 
+        formatted_prompt = prompt_custom.format(**prompt_input)
+        formatted_prompt_custom = re.sub(r'^Human:\s*', '', formatted_prompt)
+
         response_chain = prompt_custom | self.llm | StrOutputParser()
         response = response_chain.invoke(prompt_input)
 
-        # st.write("Question:", question)
-        # st.write("Answer:", response)
-        return response
+        prompt_result = {
+            "prompt": formatted_prompt_custom,
+            "response": response
+            }
+        
+        return prompt_result
     
     def step_back_prompt(self, combined_context, question):
         step_back_template = """

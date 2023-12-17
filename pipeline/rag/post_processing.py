@@ -27,7 +27,7 @@ class PostProcessor:
         #st.write(formatted_docs)
 
     @staticmethod
-    def prp_reranking(retrieval_results, question=None):
+    def reranking(retrieval_results, question=None):
 
         if isinstance(retrieval_results[0], Document):
             retrieval_results = [retrieval_results]
@@ -80,9 +80,10 @@ class PostProcessor:
         return compressed_documents
     
     @staticmethod
-    def filter_top_documents(documents, question=None):
-        top_n = st.session_state.get('filter_number', 5)  # Default to 5 if not set
-        top_docs = documents[:top_n]
+    def filter_top_documents(documents, question=None, **settings):
+        top_filter_n = settings.get('top_filter_n', st.session_state.get('top_filter_n', 5))
+
+        top_docs = documents[:top_filter_n]
 
         # st.markdown("### Filter Top Docs")
         # PostProcessor.display_documents(top_docs) 

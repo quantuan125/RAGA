@@ -1,0 +1,21 @@
+{
+    "query_transformation": {
+        "function": "None",
+        "settings": null
+    },
+    "query_construction": {
+        "function": "None",
+        "settings": null
+    },
+    "vector_search": {
+        "function": "multi_vector_retriever",
+        "settings": null
+    },
+    "post_processing": {
+        "functions": []
+    },
+    "prompting": {
+        "function": "None",
+        "settings": null
+    }
+}

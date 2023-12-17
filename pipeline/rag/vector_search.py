@@ -15,32 +15,33 @@ class VectorSearch:
     def __init__(self):
         self.vector_store = st.session_state.vector_store
         self.selected_document = st.session_state.selected_document
-        self.retriever = self.get_base_retriever_custom()
 
-    def get_base_retriever_custom(self):
-        top_k = st.session_state.get('top_k_value', 3)
-        search_type = st.session_state.get('search_type', 'similarity')
+    def get_base_retriever_custom(self, top_k=None, search_type=None, lambda_mult=None, fetch_k=None, score_threshold=None):
+        top_k = top_k if top_k is not None else st.session_state.get('top_k', 3)
+        search_type = search_type if search_type is not None else st.session_state.get('search_type', 'similarity')
+        lambda_mult = lambda_mult if lambda_mult is not None else st.session_state.get('lambda_mult', 0.5)
+        fetch_k = fetch_k if fetch_k is not None else st.session_state.get('fetch_k', 20)
+        score_threshold = score_threshold if score_threshold is not None else st.session_state.get('score_threshold', 0.5)
+        
         search_kwargs = {'k': top_k}
 
         if search_type == 'mmr':
-            lambda_mult = st.session_state.get('lambda_mult', 0.5)
-            fetch_k = st.session_state.get('fetch_k', 20)
             search_kwargs.update({'lambda_mult': lambda_mult, 'fetch_k': fetch_k})
 
         if search_type == 'similarity_score_threshold':
-            score_threshold = st.session_state.get('score_threshold', 0.5)
             search_kwargs.update({'score_threshold': score_threshold})
 
         if self.selected_document:
             search_kwargs['filter'] = {'file_name': {'$eq': self.selected_document}}
 
-        base_retriever = self.vector_store.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
+        base_retriever = st.session_state.vector_store.as_retriever(search_type=search_type, search_kwargs=search_kwargs)
         #st.write(search_type)
         #st.write(search_kwargs)
         return base_retriever
     
-    def base_retriever(self, questions):
-        base_retriever = self.retriever
+    
+    def base_retriever(self, questions, **settings):
+        base_retriever = self.get_base_retriever_custom(**settings)
 
         if isinstance(questions, list):
             # Use 'batch' method for a list of queries
@@ -54,16 +55,24 @@ class VectorSearch:
         # st.write(retrieval_results)
         return retrieval_results
     
-    def reranking_retriever(self, questions):
-    # Retrieve session state values or use default
-        top_reranked_value = st.session_state.get('top_reranked_value', 5)
-        reciprocal_rank_k = st.session_state.get('reciprocal_rank_k', 60)
+    def reranking_retriever(self, questions, **settings):
+
+        top_reranked_value = settings.get('top_reranked_value', st.session_state.get('top_reranked_value', 5))
+        reciprocal_rank_k = settings.get('reciprocal_rank_k', st.session_state.get('reciprocal_rank_k', 60))
+        top_k = settings.get('top_k', st.session_state.get('top_k', 3))
 
         # Base retrieval process
-        base_retriever = self.retriever
+        base_retriever = self.get_base_retriever_custom(top_k=top_k)
 
-        retriever_map = base_retriever.map()
-        retrieval_results = retriever_map.invoke(questions)
+        if isinstance(questions, list):
+            # Use 'batch' method for a list of queries
+            retriever_map = base_retriever.map()
+            retrieval_results = retriever_map.invoke(questions)
+            # Flatten the results as 'batch' returns a list of lists
+        else:
+            # Use 'invoke' method for a single query string
+            list_of_retrieval_results = base_retriever.invoke(questions)
+            retrieval_results = [list_of_retrieval_results]
 
         # st.markdown("### Base Retrieval:")
         # st.write(retrieval_results)
@@ -89,6 +98,7 @@ class VectorSearch:
 
         # st.markdown("### Top Ranked Results:")
         # st.write(top_reranked_results)
+        #st.write(flat_top_reranked_results)
         return flat_top_reranked_results
     
     def self_query_retriever(self, question):
@@ -100,7 +110,7 @@ class VectorSearch:
 
         sqr_retriever = SelfQueryRetriever(
             query_constructor=query_constructor,
-            vectorstore=self.vector_store,
+            vectorstore=st.session_state.vector_store,
             structured_query_translator=RedisTranslator(schema=redis_schema),
         )
 
@@ -111,18 +121,21 @@ class VectorSearch:
 
         return sqr_documents
     
-    def multi_retriever_query(self, questions):
-        in_memory_store = st.session_state.inmemorystore
+    def multi_vector_retriever(self, questions, **settings):
+        mvr_documents_store = settings.get('mvr_documents_store', st.session_state.get('mvr_documents_store', None))
+
+        if not mvr_documents_store:
+            raise ValueError("mvr_documents_store is not set. Please configure it before using multi_retriever_query.")
 
         # Initialize MultiVectorRetriever
         mvr_retriever = MultiVectorRetriever(
-            vectorstore=self.vector_store,
-            docstore=in_memory_store,
+            vectorstore=st.session_state.vector_store,
+            docstore= mvr_documents_store,
             id_key="unique_id",
         )
 
         if isinstance(questions, list):
-             retrieval_results = mvr_retriever.batch(questions, config={"max_concurrency": 5}) 
+            retrieval_results = mvr_retriever.batch(questions, config={"max_concurrency": 5}) 
         else:
             retrieval_results = mvr_retriever.invoke(questions)
 

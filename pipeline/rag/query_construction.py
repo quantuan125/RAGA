@@ -12,7 +12,28 @@ class QueryConstructor:
     def __init__(self):
         self.llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-1106")
 
-    def self_query_constructor(self, question):
+    def format_toc_for_json(toc, indent_level=0):
+        formatted_toc = ""
+        indent = " " * (4 * indent_level)  # 4 spaces per indent level
+
+        for entry in toc:
+            for key, value in entry.items():
+                if key == "subsections":
+                    if value:
+                        formatted_toc += f"{indent}'{key}': [\n"
+                        formatted_toc += QueryConstructor.format_toc_for_json(value, indent_level + 1)
+                        formatted_toc += f"{indent}]\n"
+                else:
+                    formatted_toc += f"{indent}'{key}': '{value}',\n"
+
+        return formatted_toc
+
+    def self_query_constructor(self, question, **settings):
+
+        metadata_field_info = settings.get('metadata_field_info', st.session_state.get('metadata_field_info', None))
+        toc_content = settings.get('toc_content', st.session_state.get('toc_content', None))
+        document_content_description = settings.get('document_content_description', st.session_state.get('document_content_description', None))
+
         examples = [
             (
                 "Can you tell me about the regulations for stairs?",
@@ -39,31 +60,13 @@ class QueryConstructor:
                 "What are regulation for fences and handrails?",
                 {
                 "query": "fences, handrails",
-                "filter": "or(contain(\"h3_subchapter\", \"Stairs\"), contain(\"h3_subchapter\", \"Hand rails\"))"
+                "filter": "or(contain(\"h3_subchapter\", \"Fencing\"), contain(\"h3_subchapter\", \"Hand rails\"))"
                 }
             ),
         ]
 
-        def format_toc_for_json(toc, indent_level=0):
-            formatted_toc = ""
-            indent = " " * (4 * indent_level)  # 4 spaces per indent level
-
-            for entry in toc:
-                # Iterate through each key-value pair in the entry
-                for key, value in entry.items():
-                    if key == "subsections":
-                        if value:  # Only add subsections if they exist
-                            formatted_toc += f"{indent}'{key}': [\n"
-                            formatted_toc += format_toc_for_json(value, indent_level + 1)
-                            formatted_toc += f"{indent}]\n"
-                    else:
-                        # Format the current section or subsection
-                        formatted_toc += f"{indent}'{key}': '{value}',\n"
-
-            return formatted_toc
-
-        if st.session_state.toc_content:
-            toc_string = format_toc_for_json(st.session_state.toc_content)
+        if toc_content:
+            toc_string = QueryConstructor.format_toc_for_json(toc_content)
         else:
             toc_string = "No Table of Contents available."
         
@@ -77,22 +80,22 @@ class QueryConstructor:
         custom_schema_prompt = DEFAULT_SCHEMA + "\n\n" + TOC_PROMPT + "\n\n" + toc_string
             
         query_constructor_prompt = get_query_constructor_prompt(
-            st.session_state.document_content_description, 
-            st.session_state.metadata_field_info,
+            document_content_description, 
+            metadata_field_info,
             examples=examples,
             schema_prompt=custom_schema_prompt
         )
 
         formatted_constructor_prompt = query_constructor_prompt.format(query=question)
         formatted_constructor_prompt_html = formatted_constructor_prompt.replace("json<br>", "text<br>")
-        st.markdown("### Query Constructor:")
-        with st.expander("Query Constructor"):
-            st.markdown(formatted_constructor_prompt_html, unsafe_allow_html=True)
+        # st.markdown("### Query Constructor:")
+        # with st.expander("Query Constructor"):
+        #     st.markdown(formatted_constructor_prompt_html, unsafe_allow_html=True)
 
         query_constructor_runnable = load_query_constructor_runnable(
             llm=self.llm,
-            document_contents=st.session_state.document_content_description, 
-            attribute_info=st.session_state.metadata_field_info,
+            document_contents=document_content_description, 
+            attribute_info=metadata_field_info,
             examples=examples,
             schema_prompt=custom_schema_prompt,
             fix_invalid=True
@@ -101,9 +104,14 @@ class QueryConstructor:
         st.session_state.query_constructor = query_constructor_runnable
 
         structured_query = query_constructor_runnable.invoke({"query": question})
-        st.markdown("### Structured Request Output:")
-        st.json({"query": structured_query.query, "filter": str(structured_query.filter)})
-        return structured_query
+        # st.markdown("### Structured Request Output:")
+        # st.json({"query": structured_query.query, "filter": str(structured_query.filter)})
+        
+        qc_result = {
+            'structured_query': structured_query,
+            'constructor_prompt_html': formatted_constructor_prompt_html
+        }
+        return qc_result
 
     def generate_metadata_descriptions(self, field_name, header_info_list):
         header_info_tuple = [(h[0], h[1]) for h in header_info_list]

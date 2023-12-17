@@ -36,9 +36,9 @@ class DocumentSplitter:
 
         # Recursive splitting logic
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=st.session_state.chunk_size, 
-            chunk_overlap=st.session_state.chunk_overlap, 
-            separators=st.session_state.selected_separators
+            chunk_size=st.session_state.get('chunk_size', 3000),
+            chunk_overlap=st.session_state.get('chunk_overlap', 200),
+            separators=st.session_state.get('selected_separators', None),
         )
 
         markdown_splitter = CustomMarkdownHeaderTextSplitter(headers_to_split_on=headers_to_split_on)
@@ -60,17 +60,17 @@ class DocumentSplitter:
         
         # Recursive splitting logic
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=st.session_state.chunk_size, 
-            chunk_overlap=st.session_state.chunk_overlap, 
-            separators=st.session_state.selected_separators
+            chunk_size=st.session_state.get('chunk_size', 3000),
+            chunk_overlap=st.session_state.get('chunk_overlap', 200),
+            separators=st.session_state.get('selected_separators', None),
         )
 
         for doc in documents:
             section_documents = text_splitter.split_documents([doc])
             recursive_splitted_documents.extend(section_documents)
 
-        st.markdown("### Recursive Splitted Document Chunks:")
-        st.write(recursive_splitted_documents)
+        # st.markdown("### Recursive Splitted Document Chunks:")
+        # st.write(recursive_splitted_documents)
         return recursive_splitted_documents
     
     def character_splitter(documents):
@@ -78,8 +78,8 @@ class DocumentSplitter:
         
         # Recursive splitting logic
         text_splitter = CharacterTextSplitter(
-            chunk_size=st.session_state.chunk_size, 
-            chunk_overlap=st.session_state.chunk_overlap, 
+            chunk_size=st.session_state.get('chunk_size', 3000),
+            chunk_overlap=st.session_state.get('chunk_overlap', 200),
         )
 
         for doc in documents:

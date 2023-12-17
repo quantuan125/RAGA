@@ -1,0 +1,38 @@
+{
+    "document_loading": {
+        "function": "document_loader_langchain",
+        "settings": null
+    },
+    "document_splitting": {
+        "function": "recursive_splitter",
+        "settings": null
+    },
+    "document_processing": {
+        "functions": [
+            {
+                "function": "clean_chunks_content",
+                "settings": null
+            },
+            {
+                "function": "customize_document_metadata",
+                "settings": null
+            },
+            {
+                "function": "filter_short_documents",
+                "settings": null
+            }
+        ]
+    },
+    "document_indexing": {
+        "function": "None",
+        "settings": null
+    },
+    "document_embedding": {
+        "function": "openai_embedding_model",
+        "settings": null
+    },
+    "vector_databasing": {
+        "function": "build_chroma_vectorstore",
+        "settings": null
+    }
+}

@@ -40,8 +40,8 @@ class DocumentLoader:
             # Ensure that the temporary file is cleaned up
             os.remove(file_path)
 
-        st.markdown("### Loaded Documents:")
-        st.write(documents)
+        # st.markdown("### Loaded Documents:")
+        # st.write(documents)
         return documents
     
     @staticmethod

@@ -1,0 +1,25 @@
+{
+    "query_transformation": {
+        "function": "None",
+        "settings": null
+    },
+    "query_construction": {
+        "function": "None",
+        "settings": null
+    },
+    "vector_search": {
+        "function": "reranking_retriever",
+        "settings": {
+            "top_reranked_value": 5,
+            "reciprocal_rank_k": 60,
+            "top_k": 4
+        }
+    },
+    "post_processing": {
+        "functions": []
+    },
+    "prompting": {
+        "function": "None",
+        "settings": null
+    }
+}
