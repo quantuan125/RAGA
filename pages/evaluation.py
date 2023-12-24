@@ -401,10 +401,10 @@ def main():
                 
 
 
-    st.write(st.session_state.vector_store)
-    st.write(st.session_state.use_retriever_model)
-    st.write(st.session_state.evaluation_quantity)
-    st.write(st.session_state.batch_size)
+    # st.write(st.session_state.vector_store)
+    # st.write(st.session_state.use_retriever_model)
+    # st.write(st.session_state.evaluation_quantity)
+    # st.write(st.session_state.batch_size)
 
 if __name__ == "__main__":
     main()

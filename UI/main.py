@@ -391,11 +391,12 @@ class Retrieval_Settings:
             Retrieval_Settings.toggle_setting_expander('prompting', 'prompting_settings')
 
         st.session_state.prompting_function = prompting_methods[st.session_state.selected_prompting]
-        st.write(st.session_state.query_transformation_function)
-        st.write(st.session_state.query_construction_function)
-        st.write(st.session_state.vector_search_function)
-        st.write(st.session_state.post_processing_function)
-        st.write(st.session_state.prompting_function)
+        
+        # st.write(st.session_state.query_transformation_function)
+        # st.write(st.session_state.query_construction_function)
+        # st.write(st.session_state.vector_search_function)
+        # st.write(st.session_state.post_processing_function)
+        # st.write(st.session_state.prompting_function)
 
         with st.expander("Save Configuration"):
             config_folder_path = "json/config/retrieval"
@@ -708,7 +709,7 @@ class Ingestion_Settings:
 
         st.subheader("Ingestion Settings")
 
-        uploaded_file = st.file_uploader("Upload your document (Markdown or PDF)", type=['md', 'pdf'])
+        #uploaded_file = st.file_uploader("Upload your document (Markdown or PDF)", type=['md', 'pdf'])
 
         document_loading_methods, document_splitting_methods, document_processing_methods, document_indexing_methods, document_embedding_methods, vector_database_methods = Ingestion_Settings.instances_dict_methods()
 

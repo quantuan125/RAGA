@@ -12,7 +12,6 @@ from langchain.embeddings import OpenAIEmbeddings
 import os
 import json
 import langchain
-import datetime
 
 langchain.debug=True
 
@@ -20,7 +19,7 @@ def main():
     load_dotenv()
     st.set_page_config(page_title="Main", page_icon="", layout="wide")
     apply_css()
-    st.title("MAIN")
+    st.title("MAIN 🔍")
 
     with st.empty():
         Init.initialize_session_state()

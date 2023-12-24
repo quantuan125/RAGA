@@ -7,8 +7,8 @@ from streamlit_extras.colored_header import colored_header
 from UI.css import apply_css
 
 
-st.set_page_config(page_title="Home Page", page_icon="🏠", layout="wide")
-st.title("Welcome to Miracle 🦜️")
+st.set_page_config(page_title="Home Page", page_icon="🤖", layout="wide")
+st.title("Welcome to RAGA 🤖")
 
 apply_css()
 with st.empty():
@@ -20,11 +20,9 @@ with st.empty():
 show_pages(
     [   
         Page("app.py", "About", "🏠"),
-        Page("pages/main.py", "Main", ""),
         Page("pages/configuration.py", "Configuration", "⚙️"),
-        Page("pages/dbm.py", "Database Management", "🗃️"),
+        Page("pages/main.py", "Main", "🔍"),
         Page("pages/evaluation.py", "Evaluation", "📐"),
-        Page("pages/playground.py", "Playground", "🕹️"),
     ]
 )
 
