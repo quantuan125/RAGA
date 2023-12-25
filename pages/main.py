@@ -3,10 +3,8 @@ from dotenv import load_dotenv
 from UI.main import Main, Retrieval_Settings, Retrieval_Explain, Retrieval_Display
 from UI.main import Ingestion_Settings, Ingestion_Explain, Ingestion_Display
 from UI.css import apply_css
-from UI.sidebar import Sidebar
 from pipeline.pipeline import Retrieval_Pipeline, Ingestion_Pipeline
 from utility.sessionstate import Init
-from streamlit_extras.grid import grid, example
 from langchain.vectorstores.redis import Redis
 from langchain.embeddings import OpenAIEmbeddings
 import os
@@ -88,7 +86,7 @@ def main():
                     #VectorSearch(st.session_state.vector_store)
                     Retrieval_Pipeline.check_and_initialize_vector_search()
             
-                Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
+                #Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
                 #Pipeline.check_and_initialize_vector_search()
 
                 # st.write("Current vector_store:", st.session_state.vector_store)

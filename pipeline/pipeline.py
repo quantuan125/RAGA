@@ -235,7 +235,7 @@ class Ingestion_Pipeline:
             'document_loading': {
                 'None': None,
                 'document_loader_langchain': cls.document_loading_instance.document_loader_langchain,
-                'document_loader_unstructured': cls.document_loading_instance.document_loader_unstructured,
+                # 'document_loader_unstructured': cls.document_loading_instance.document_loader_unstructured,
             },
             'document_splitting': {
                 'None': None,

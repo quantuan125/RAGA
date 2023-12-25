@@ -1,9 +1,7 @@
-import streamlit as st
 import tempfile
 import os
 import pypdf
 from langchain.document_loaders import TextLoader
-from unstructured.partition.md import partition_md
 
 class DocumentLoader:
     
@@ -44,15 +42,15 @@ class DocumentLoader:
         # st.write(documents)
         return documents
     
-    @staticmethod
-    def document_loader_unstructured(uploaded_file):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".md") as tmpfile:
-            tmpfile.write(uploaded_file.getvalue())
-            file_path = tmpfile.name
+    # @staticmethod
+    # def document_loader_unstructured(uploaded_file):
+    #     with tempfile.NamedTemporaryFile(delete=False, suffix=".md") as tmpfile:
+    #         tmpfile.write(uploaded_file.getvalue())
+    #         file_path = tmpfile.name
 
-        uploaded_document = partition_md(filename=file_path)
+    #     uploaded_document = partition_md(filename=file_path)
 
-        os.remove(file_path)
+    #     os.remove(file_path)
 
-        st.write(uploaded_document)
-        return uploaded_document
+    #     st.write(uploaded_document)
+    #     return uploaded_document

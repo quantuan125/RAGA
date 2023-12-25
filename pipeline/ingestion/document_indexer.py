@@ -2,13 +2,11 @@ import streamlit as st
 from langchain.prompts import ChatPromptTemplate
 from langchain.chat_models import ChatOpenAI
 from langchain.schema.output_parser import StrOutputParser 
-from langchain.storage import InMemoryStore
 from langchain.schema import Document
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from typing import Iterable
 import uuid
 import os 
-import datetime
 
 class DocumentIndexer:
 
