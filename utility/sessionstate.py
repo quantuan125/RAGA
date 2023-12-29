@@ -58,7 +58,10 @@ class Init:
             "authentication": False,
 
             # Specific to app.py
-            "openai_key": ""
+            "openai_key": "",
+
+            #Specific to main.py
+            "database": None
         }
 
         for key, value in default_values.items():

@@ -5,7 +5,7 @@ from utility.authy import Login
 from utility.client import ClientDB
 from utility.sessionstate import Init
 from dotenv import load_dotenv
-from UI.main import MainConfig
+from UI.config import UI_Config
 from st_keyup import st_keyup
 
 
@@ -62,16 +62,16 @@ def main():
         st.subheader("Admin Functions")
 
         if 'username' in st.session_state and st.session_state.username == "admin":
-            selected_username, client_db_for_selected_user, sorted_collection_objects = MainConfig.setup_admin_environment()
+            selected_username, client_db_for_selected_user, sorted_collection_objects = UI_Config.setup_admin_environment()
 
             with st.expander("List of User Collections"):
-                MainConfig.list_user_collections(sorted_collection_objects)
+                UI_Config.list_user_collections(sorted_collection_objects)
 
             with st.expander("Delete User Collection"):
-                MainConfig.delete_user_collection(client_db_for_selected_user, sorted_collection_objects)
+                UI_Config.delete_user_collection(client_db_for_selected_user, sorted_collection_objects)
                 
             with st.expander("Reset Client"):
-                MainConfig.reset_client_for_user(selected_username, client_db_for_selected_user)
+                UI_Config.reset_client_for_user(selected_username, client_db_for_selected_user)
         else:
             st.warning("This section is restricted to the admin user only.")
 

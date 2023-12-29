@@ -1,16 +1,18 @@
 import streamlit as st
 import json
 import os
+import re
 from langchain.chat_models import ChatOpenAI
+from langchain.embeddings import OpenAIEmbeddings
 from langchain.chains.query_constructor.prompt import DEFAULT_SCHEMA
 from langchain.prompts import ChatPromptTemplate
 from langchain.chains.query_constructor.base import get_query_constructor_prompt, load_query_constructor_runnable
 from langchain.schema.output_parser import StrOutputParser
 from langchain.chains.query_constructor.schema import AttributeInfo
-
+from langchain_core.runnables import RunnablePassthrough
 class QueryConstructor:
     def __init__(self):
-        self.llm = ChatOpenAI(temperature=0, model="gpt-3.5-turbo-1106")
+        self.llm = ChatOpenAI(temperature=0, model="gpt-4-1106-preview")
 
     def format_toc_for_json(toc, indent_level=0):
         formatted_toc = ""
@@ -109,7 +111,7 @@ class QueryConstructor:
         
         qc_result = {
             'structured_query': structured_query,
-            'constructor_prompt_html': formatted_constructor_prompt_html
+            'constructor_prompt': formatted_constructor_prompt_html
         }
         return qc_result
 
@@ -187,5 +189,158 @@ class QueryConstructor:
             attr_info_list.append(attr_info)
 
         return attr_info_list
-        
+    
+    def sql_query_constructor(self, question):
+        template = """You are a SQLite expert. Given an input question, you must create a syntactically correct SQLite query to run.
+        Unless the user specifies in the question a specific number of examples to obtain, query for at most {top_k} results using the LIMIT clause as per SQLite. You can order the results to return the most informative data in the database.
+        Never query for all columns from a table. You must query only the columns that are needed to answer the question. Wrap each column name in double quotes (") to denote them as delimited identifiers.
+        Pay attention to use only the column names you can see in the tables below. Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.
+        Pay attention to use date('now') function to get the current date, if the question involves "today".
 
+        #Use the following format:
+
+        Question: <Question here>
+        SQLQuery: <SQL Query to run>
+
+        #Only use the following tables:
+
+        {schema}.
+
+        #INSTRUCTION:
+        Your answer must begin with "SQLQuery:" and you are not allowed to answer in natural language:
+
+        #EXAMPLE:
+        QUESTION: What is the order with the longest delay?
+        SQLQuery: SELECT "OrderID", MAX("TimeCompleted" - "TimeSent") as "LongestDelay" FROM orders;
+
+        QUESTION: What is the heaviest order and how heavy is it? 
+        SQLQuery: SELECT "OrderID", "WeighingSlip" FROM orders WHERE "WeighingSlip" IS NOT NULL ORDER BY "WeighingSlip" DESC LIMIT 1;
+
+        #QUESTION: 
+        {question}
+        """
+
+        sql_schema = st.session_state.database.get_table_info()
+
+        sql_constructor_prompt = ChatPromptTemplate.from_template(template)
+
+        formatted_sql_constructor_prompt = sql_constructor_prompt.format_messages(question=question, top_k=5, schema=sql_schema)
+
+        prompt_input = {
+            "schema": sql_schema,
+            "question": question,
+            "top_k": 5
+        }
+
+        def remove_sql_query_prefix(text):
+            # Remove 'SQLQuery:' prefix and strip leading/trailing whitespace
+            return text.replace("SQLQuery:", "").strip()
+
+        sql_query_chain = (
+            sql_constructor_prompt
+            | self.llm.bind(stop=["\nSQLResult:"])
+            | StrOutputParser()
+            | remove_sql_query_prefix
+        )
+
+        st.session_state.query_constructor = sql_query_chain
+
+        sql_query_response = sql_query_chain.invoke(prompt_input)
+
+        st.session_state.sql_query = sql_query_response
+
+        sql_query_result = {
+            'structured_query': sql_query_response,
+            'constructor_prompt': formatted_sql_constructor_prompt
+        }
+
+        return sql_query_result
+
+    def sql_semantic_query_constructor(self, question):
+        template = """You are a Postgres expert. Given an input question, you must create a syntactically correct Postgres query to run.
+
+        Unless the user specifies in the question a specific number of examples to obtain, query for at most {top_k} results using the LIMIT clause as per Postgres. You can order the results to return the most informative data in the database.
+        Never query for all columns from a table. You must query only the columns that are needed to answer the question. Wrap each column name in double quotes (") to denote them as delimited identifiers.
+        Pay attention to use only the column names you can see in the tables below. Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.
+        Pay attention to use date('now') function to get the current date, if the question involves "today".
+
+        You can use an extra extension which allows you to run semantic similarity using <-> operator on tables containing columns named "embeddings".
+        <-> operator can ONLY be used on embeddings columns.
+        The embeddings value for a given row typically represents the semantic meaning of that row.
+        The vector represents an embedding representation of the question, given below. 
+        Do NOT fill in the vector values directly, but rather specify a `[search_word]` placeholder, which should contain the word that would be embedded for filtering.
+        For example, if the user asks for songs about 'the feeling of loneliness' the query could be:
+        'SELECT "[whatever_table_name]"."SongName" FROM "[whatever_table_name]" ORDER BY "embeddings" <-> '[loneliness]' LIMIT 5'
+
+        Your answer must be a in SQL format and you are not allowed to answer in natural language:
+
+        Use the following format:
+
+        Question: <Question here>
+        SQLQuery: <SQL Query to run>
+
+        Only use the following tables:
+
+        {schema}
+
+        EXAMPLE 1:
+        Question: Which are the 10 rock songs with titles about deep feeling of loneliness?
+        SQLQuery: SELECT "Track"."Name" FROM "Track" JOIN "Genre" ON "Track"."GenreId" = "Genre"."GenreId" WHERE "Genre"."Name" = \'Rock\' ORDER BY "Track"."embeddings" <-> \'[dispair]\' LIMIT 10
+
+        EXAMPLE 2:
+        Question: I need the 6 albums with shortest title, as long as they contain songs which are in the 20 saddest song list.
+        SQLQuery: WITH "SadSongs" AS (SELECT "TrackId" FROM "Track" ORDER BY "embeddings" <-> '[sad]' LIMIT 20),"SadAlbums" AS (SELECT DISTINCT "AlbumId" FROM "Track" WHERE "TrackId" IN (SELECT "TrackId" FROM "SadSongs"))SELECT "Album"."Title" FROM "Album" WHERE "AlbumId" IN (SELECT "AlbumId" FROM "SadAlbums") ORDER BY "title_len" ASC LIMIT 6
+
+
+        QUESTION: {question}
+        SQLQuery:
+        """
+
+        sql_schema = st.session_state.database.get_table_info()
+
+        sql_constructor_prompt = ChatPromptTemplate.from_template(template)
+
+        formatted_sql_constructor_prompt = sql_constructor_prompt.format_messages(question=question, top_k=5, schema=sql_schema)
+
+        prompt_input = {
+            "schema": sql_schema,
+            "question": question,
+            "top_k": 5
+        }
+
+        def remove_sql_query_prefix(text):
+            # Remove 'SQLQuery:' prefix and strip leading/trailing whitespace
+            return text.replace("SQLQuery:", "").strip()
+
+        sql_query_chain = (
+            sql_constructor_prompt
+            | self.llm.bind(stop=["\nSQLResult:"])
+            | StrOutputParser()
+            | remove_sql_query_prefix
+        )
+
+        st.session_state.query_constructor = sql_query_chain
+
+        sql_query = sql_query_chain.invoke(prompt_input)
+
+        def replace_brackets(match):
+            words_inside_brackets = match.group(1).split(", ")
+            embedded_words = [
+                str(OpenAIEmbeddings().embed_query(word)) for word in words_inside_brackets
+            ]
+            return "', '".join(embedded_words)
+
+        def get_query(query):
+            sql_query = re.sub(r"\[([\w\s,]+)\]", replace_brackets, query)
+            return sql_query
+        
+        embedded_sql_query = get_query(sql_query)
+        
+        st.session_state.sql_query = embedded_sql_query
+
+        sql_query_result = {
+            'structured_query': sql_query,
+            'constructor_prompt': formatted_sql_constructor_prompt
+        }
+
+        return sql_query_result

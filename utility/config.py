@@ -1,7 +1,8 @@
 import streamlit as st
 import os
 import json
-from pipeline.pipeline import Retrieval_Pipeline, Ingestion_Pipeline
+from RAG.retrieval_pipeline import Retrieval_Pipeline
+from RAG.ingestion_pipeline import Ingestion_Pipeline
 
 class ConfigSettings:
     def get_function_name(func):

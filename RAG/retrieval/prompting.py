@@ -1,10 +1,10 @@
 import streamlit as st
 from textwrap import dedent
 import re
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from langchain.schema.output_parser import StrOutputParser 
 from langchain.chat_models import ChatOpenAI
-
+from langchain_core.runnables import RunnablePassthrough
 
 class Prompting:
     def __init__(self):
@@ -110,3 +110,30 @@ class Prompting:
         # st.write(response)
 
         return response
+    
+    def sql_prompt(self, combined_context, question):
+        sql_query_template = """Based on the table schema below, question, and sql response, write a natural language response:
+        {schema}
+
+        Question: {question}
+        SQL Response: {sql_response}"""
+
+        sql_query_prompt = ChatPromptTemplate.from_template(sql_query_template)
+        
+        sql_query_prompt_input = {
+            "schema": st.session_state.database.get_table_info(),
+            "question": question,
+            "sql_response": combined_context
+        }
+
+        sql_formatted_prompt = sql_query_prompt.format(**sql_query_prompt_input)
+        
+        sql_response_chain = sql_query_prompt | self.llm | StrOutputParser()
+        sql_response = sql_response_chain.invoke(sql_query_prompt_input)
+
+        prompt_result = {
+            "prompt": sql_formatted_prompt,
+            "response": sql_response
+            }
+        
+        return prompt_result

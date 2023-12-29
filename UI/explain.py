@@ -3,8 +3,8 @@ import os
 import json
 import datetime
 from langchain.chains.query_constructor.base import AttributeInfo
-from pipeline.rag.query_construction import QueryConstructor
-from pipeline.rag.vector_search import VectorSearch
+from RAG.retrieval.query_construction import QueryConstructor
+from RAG.retrieval.vector_search import VectorSearch
 
 
 class Explain_QT:
@@ -159,7 +159,7 @@ class Explain_QC:
         toc_files = [f for f in os.listdir(toc_folder_path) if f.endswith('.json')]
 
 
-        if selected_query_constructor == 'Self-Query Construction':
+        if selected_query_constructor == 'Self-Query-Construction':
             st.subheader("Configure Metadata Attribute and Description")
             if 'document_content_description' not in st.session_state:
                 st.session_state.document_content_description = "Structured sections of the Danish Building Regulation 2018 document"
@@ -572,7 +572,28 @@ class Explain_DL:
     )
 
     def document_loader_langchain_settings():
-        pass
+
+        if st.checkbox("Enable Source Column Index Selection", value=False):
+            column_index = st.number_input("Enter the header column index for source", min_value=0)
+            st.session_state.source_column_index = column_index
+        else:
+            st.session_state.source_column_index = None
+
+        if st.checkbox("Select Metadata Columns", key="select_metadata_columns"):
+            if 'metadata_column_indexes' not in st.session_state:
+                st.session_state.metadata_column_indexes = []
+
+            # UI for adding metadata column indexes
+            new_col_index = st.number_input("Metadata Column Index", min_value=0, key="new_metadata_col_index")
+            if st.button("Add Metadata Column Index"):
+                st.session_state.metadata_column_indexes.append(new_col_index)
+
+            st.write("Current Metadata Column Indexes:", st.session_state.metadata_column_indexes)
+
+            # Reset the list if needed
+            if st.button("Reset Metadata Column Indexes"):
+                st.session_state.metadata_column_indexes = []
+                st.rerun()
 
     def document_loader_unstructured():
         pass
@@ -992,7 +1013,7 @@ class Explain_VD:
         custom_collection_name = st.text_input("Enter a custom collection name:", value=st.session_state.collection_name)
             
         if custom_collection_name:
-            st.session_state.collection_name = custom_collection_name
+            st.session_state.custom_collection_name = custom_collection_name
             st.success(f"Custom collection name set to: {custom_collection_name}")
 
     @staticmethod

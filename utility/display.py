@@ -1,5 +1,7 @@
 import streamlit as st
 from streamlit_extras.stylable_container import stylable_container
+from typing import List
+from langchain.schema import Document
 
 class Retrieval_Stepper:
 
@@ -12,7 +14,7 @@ class Retrieval_Stepper:
     def display_query_construction_results(query_construction_results, container_key):
         if query_construction_results:
             with st.expander(f"Query Constructor Prompt ({container_key})"):
-                st.markdown(query_construction_results.get('constructor_prompt_html', ''), unsafe_allow_html=True)
+                st.markdown(query_construction_results.get('constructor_prompt', ''))
 
             with st.expander(f"Structured Request Output ({container_key})"):
                 st.markdown(query_construction_results.get('structured_query', {}))
@@ -26,7 +28,7 @@ class Retrieval_Stepper:
             st.session_state[current_doc_index_key] = 0
 
         # Check if vector_search_results is a list of Document objects
-        if vector_search_results:
+        if vector_search_results and isinstance(vector_search_results, List) and all(isinstance(item, Document) for item in vector_search_results):
             current_doc_index = st.session_state[current_doc_index_key]
             #st.write(st.session_state[current_doc_index_key])
             num_documents = len(vector_search_results)
@@ -67,6 +69,8 @@ class Retrieval_Stepper:
                         st.rerun()
             else:
                 st.error(f"Document index out of range: {current_doc_index}")
+        elif vector_search_results:
+            st.write(vector_search_results)
         else:
             st.warning("No search results to display.")
 

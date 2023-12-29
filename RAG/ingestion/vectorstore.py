@@ -8,7 +8,14 @@ class VectorStore:
     @staticmethod
     def build_chroma_vectorstore(document_chunks, document_embedder):
         chroma_client = st.session_state.client_db.client
-        chroma_collection_name = st.session_state.collection_name
+        
+        if 'custom_collection_name' in st.session_state and st.session_state.custom_collection_name != "None":
+            chroma_collection_name = st.session_state.custom_collection_name
+        else:
+            chroma_collection_name = st.session_state.collection_name
+
+        if chroma_collection_name == "None":
+            raise ValueError("Chroma collection name cannot be 'None'.")
         
         # Use the ids that were passed to the function, which already include the file name
         use_unique_id = all('unique_id' in doc.metadata for doc in document_chunks)

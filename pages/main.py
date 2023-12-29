@@ -1,17 +1,19 @@
 import streamlit as st
 from dotenv import load_dotenv
-from UI.main import Main, Retrieval_Settings, Retrieval_Explain, Retrieval_Display
-from UI.main import Ingestion_Settings, Ingestion_Explain, Ingestion_Display
+from UI.ingestion_main import Ingestion_Settings, Ingestion_Explain, Ingestion_Display
+from UI.retrieval_main import Retrieval_Settings, Retrieval_Explain, Retrieval_Display
+from RAG.retrieval_pipeline import Retrieval_Pipeline
+from UI.sidebar import UI_Sidebar
 from UI.css import apply_css
-from pipeline.pipeline import Retrieval_Pipeline, Ingestion_Pipeline
 from utility.sessionstate import Init
 from langchain.vectorstores.redis import Redis
 from langchain.embeddings import OpenAIEmbeddings
 import os
 import json
 import langchain
+from langchain.utilities.sql_database import SQLDatabase
 
-langchain.debug=True
+#langchain.debug=True
 
 def main():
     load_dotenv()
@@ -39,22 +41,22 @@ def main():
     with st.sidebar:
         #VECTORSTORE SELECTION
         with st.container():
-            vectorstore_options = ['None', 'Chroma', 'Redis']
+            database_options = ['None', 'Chroma', 'Redis', 'SQLite', 'Postgres']
 
-            selected_vectorstore = st.selectbox(
+            selected_database = st.selectbox(
                 "Select the vectorstore type",
-                options=vectorstore_options,
+                options=database_options,
                 index=0,  # Default to None
             )
 
-            if selected_vectorstore == 'None':
+            if selected_database == 'None':
                 st.session_state.vector_store = None
                 st.warning("No vectorstore selected.")
-                Retrieval_Pipeline.check_and_initialize_vector_search()
+                # Retrieval_Pipeline.check_and_initialize_vector_search()
 
 
 
-            elif selected_vectorstore == 'Redis':
+            elif selected_database == 'Redis':
                 redis_url = st.session_state.get('redis_url', 'redis://localhost:9000')
                 redis_index_name = st.session_state.get('redis_index_name', 'user')
 
@@ -75,16 +77,45 @@ def main():
                 )
                 Retrieval_Pipeline.check_and_initialize_vector_search()
 
-            elif selected_vectorstore == 'Chroma':
+            elif selected_database == 'Chroma':
 
                 existing_collections = st.session_state.client_db.get_existing_collections()
                 if not existing_collections:
                     st.warning("No collections available.")
                 else:
-                    selected_collection_name, selected_collection_object = Main.handle_collection_selection(existing_collections)
+                    selected_collection_name, selected_collection_object = UI_Sidebar.handle_collection_selection(existing_collections)
                     st.session_state.collection_name = selected_collection_name
                     #VectorSearch(st.session_state.vector_store)
                     Retrieval_Pipeline.check_and_initialize_vector_search()
+
+            elif selected_database == 'SQLite':
+                db_path = "sqlite:///storage/SQL/Chinook.db"
+                db = SQLDatabase.from_uri(db_path)
+                st.session_state.database = db
+
+            
+            elif selected_database == 'Postgres':
+                postgres_databases = ['chinook_pg_main', 'gln']
+
+                # Let the user select a database
+                selected_postgres_db = st.selectbox(
+                    "Select a PostgreSQL database",
+                    options=postgres_databases,
+                    index=0,  # Default to the first database
+                )
+
+                # Fetch the base URI from environment variables
+                db_uri_base = os.environ.get('POSTGRES_URI')
+
+                # Construct the complete database path
+                db_path = f"{db_uri_base}{selected_postgres_db}"
+
+                # Initialize the database
+                db = SQLDatabase.from_uri(db_path)
+                st.session_state.database = db
+
+            st.write(st.session_state.database)
+            st.write(st.session_state.vector_store)
             
                 #Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
                 #Pipeline.check_and_initialize_vector_search()
@@ -132,13 +163,15 @@ def main():
     with ingestion_tab:
         if selected_column_option == 'Settings and Explain':
             col_settings, col_explain = st.columns([1, 2])
-            Retrieval_Pipeline.initialize_retrieval_instances_and_mappings()
+            # Retrieval_Pipeline.initialize_retrieval_instances_and_mappings()
 
             with col_settings:
                 Ingestion_Settings.column_settings()
 
             with col_explain:
                 Ingestion_Explain.column_explain()
+
+            Ingestion_Display.column_display()
         
         elif selected_column_option == 'Display':
             col_display = st.columns([1])[0]
@@ -177,6 +210,8 @@ def main():
             with col_explain:
                 Retrieval_Explain.column_explain()
 
+            Retrieval_Display.column_display()
+
 
         elif selected_column_option == 'Display':
             col_display = st.columns([1])[0]
@@ -188,9 +223,10 @@ def main():
 
     # st.write(st.session_state.setting_last_selection)
     # st.write(st.session_state.expanded_setting)
-    # st.write(st.session_state.vector_store)
+    st.write(st.session_state.vector_store)
     # st.write(st.session_state.customized_containers)
-    #st.write(st.session_state.top_k)
+    # st.write(st.session_state.collection_name)
+    # st.write(st.session_state.custom_collection_name)
 
 
 

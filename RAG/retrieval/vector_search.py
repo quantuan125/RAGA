@@ -1,7 +1,6 @@
 import streamlit as st
 from langchain.load import dumps, loads
 from langchain.chat_models import ChatOpenAI
-from agent.tools import DatabaseTool
 from langchain.retrievers.multi_vector import MultiVectorRetriever
 from langchain.storage import InMemoryStore
 from langchain.schema import Document
@@ -9,6 +8,8 @@ import json
 from langchain.vectorstores.redis.schema import RedisModel
 from langchain.retrievers.self_query.base import SelfQueryRetriever
 from langchain.retrievers.self_query.redis import RedisTranslator
+from langchain.chains import create_sql_query_chain
+
 
 
 class VectorSearch:
@@ -153,3 +154,11 @@ class VectorSearch:
                 doc = Document(page_content=doc_data['page_content'], metadata=doc_data['metadata'])
                 store.mset([(doc.metadata['unique_id'], doc)])
         return store
+
+    def sql_retriever(self, question):
+
+        sql_query = st.session_state.sql_query
+        sql_result = st.session_state.database.run(sql_query)
+
+        return sql_result
+    

@@ -1,10 +1,10 @@
 import streamlit as st
 from collections import defaultdict
 from dotenv import load_dotenv
-from UI.sidebar import Sidebar
-from utility.s3 import S3
+# from UI.sidebar import Sidebar
 from utility.sessionstate import Init
-from UI.main import Main
+from UI.sidebar import UI_Sidebar
+
 
 
 def get_user_collection_name(full_name):
@@ -37,12 +37,12 @@ def main():
             else:
                 st.error("Please enter a valid name for the new collection.")
     else:
-        selected_collection_name, selected_collection_object = Main.handle_collection_selection(existing_collections)
+        selected_collection_name, selected_collection_object = UI_Sidebar.handle_collection_selection(existing_collections)
         #st.write(selected_collection_name)
         #st.write(selected_collection_object)
 
-        with st.sidebar:
-            Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
+        # with st.sidebar:
+        #     Sidebar.file_upload_and_ingest(st.session_state.client_db, selected_collection_name, selected_collection_object)
 
         collection_tab, settings_tab = st.tabs(["Collection", "Settings"])
 
@@ -178,14 +178,14 @@ def main():
             
             # Creating New Collection
             with st.expander("Create New Collection"):
-                Main.create_new_collection()
+                UI_Sidebar.create_new_collection()
 
             # Deleting a Collection
             with st.expander("Delete a Collection"):
-                Main.delete_collection(existing_collections)
+                UI_Sidebar.delete_collection(existing_collections)
 
             with st.expander("Rename a Collection"):
-                Main.rename_collection(existing_collections)
+                UI_Sidebar.rename_collection(existing_collections)
 
             with st.expander("Advanced Indexing"):
 
